@@ -56,6 +56,34 @@ Recomendacion de verificacion inicial:
 flutter doctor
 ```
 
+## Configuracion de API YouVersion
+
+El texto bíblico se consulta de forma remota usando la API de YouVersion.
+
+Ejecuta la app con tu App Key:
+
+```bash
+flutter run \
+  --dart-define=YOUVERSION_APP_KEY=<TU_APP_KEY> \
+  --dart-define=YOUVERSION_BIBLE_VERSION_ID=128
+```
+
+En la UI puedes cambiar la versión desde el selector del panel "Biblical text".
+La selección se persiste localmente en SQLite (`versecatch.db`) y se reutiliza al abrir la app.
+Opciones soportadas:
+
+- `128` — `NVI-S` — Nueva Versión Internacional 2025
+- `103` — `NBLA` — Nueva Biblia de las Américas
+- `127` — `NTV` — Nueva Traducción Viviente
+- `149` — `RVR1960` — Reina Valera 1960
+- `3291` — `VBL` — Biblia Libre
+
+Opcionalmente puedes cambiar el host base:
+
+```bash
+--dart-define=YOUVERSION_API_BASE_URL=https://api.youversion.com
+```
+
 ## Crear un ambiente local para desarrollo
 
 ### 1. Clonar el repositorio
