@@ -122,7 +122,7 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('ref-chip-John 3:16')));
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('Biblical text'), findsOneWidget);
+    expect(find.byKey(const ValueKey('biblical-text-field')), findsOneWidget);
     expect(find.textContaining('For God so loved the world'), findsOneWidget);
   });
 
@@ -266,13 +266,13 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Input source'), findsOneWidget);
-    expect(find.text('Biblical text'), findsOneWidget);
+    expect(find.byKey(const ValueKey('biblical-text-field')), findsOneWidget);
 
     await tester.tap(find.text('Edit'));
     await tester.pumpAndSettle();
 
     expect(find.text('Input source'), findsNothing);
-    expect(find.text('Biblical text'), findsNothing);
+    expect(find.byKey(const ValueKey('biblical-text-field')), findsNothing);
     expect(find.byKey(const ValueKey('source-text-field')), findsOneWidget);
   });
 

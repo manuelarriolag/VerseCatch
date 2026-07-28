@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:camera/camera.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image/image.dart' as img;
@@ -118,6 +119,31 @@ class _VerseCatchHomePageState extends State<VerseCatchHomePage> {
 
   bool get _supportsCameraCapture =>
       !kIsWeb && (Platform.isAndroid || Platform.isIOS);
+  bool get _isDesktopPlatform =>
+      !kIsWeb && (Platform.isMacOS || Platform.isWindows || Platform.isLinux);
+
+  void _adjustBodyRatio({
+    required double deltaDy,
+    required double panelsHeight,
+    required double minBodyRatio,
+    required double maxBodyRatio,
+    required double maxStep,
+    required double sensitivity,
+  }) {
+    if (panelsHeight <= 0) return;
+    final ratioDelta = ((deltaDy / panelsHeight) * sensitivity).clamp(
+      -maxStep,
+      maxStep,
+    );
+    final nextRatio = (_bodyRatio + ratioDelta).clamp(
+      minBodyRatio,
+      maxBodyRatio,
+    );
+    if (nextRatio == _bodyRatio) return;
+    setState(() {
+      _bodyRatio = nextRatio;
+    });
+  }
 
   int _fallbackBibleVersionId() {
     return kSupportedBibleVersions
@@ -605,15 +631,19 @@ class _VerseCatchHomePageState extends State<VerseCatchHomePage> {
             child: LayoutBuilder(
               builder: (context, constraints) {
                 const dividerHeight = 8.0;
+                const minBodyRatio = 0.35;
+                const maxBodyRatio = 0.8;
+                final resizeHandleHeight = dividerHeight + 16.0;
                 final headerHeight = headerVisible
                     ? (kShowBanner
                           ? (constraints.maxHeight * 0.42).clamp(280.0, 360.0)
                           : (constraints.maxHeight * 0.36).clamp(248.0, 320.0))
                     : 0.0;
-                final contentHeight = (constraints.maxHeight -
-                        headerHeight -
-                        (headerVisible ? 16.0 : 0.0))
-                    .clamp(0.0, double.infinity);
+                final contentHeight =
+                    (constraints.maxHeight -
+                            headerHeight -
+                            (headerVisible ? 16.0 : 0.0))
+                        .clamp(0.0, double.infinity);
                 final panelsHeight = (contentHeight - dividerHeight).clamp(
                   0.0,
                   double.infinity,
@@ -695,7 +725,9 @@ class _VerseCatchHomePageState extends State<VerseCatchHomePage> {
                                     ),
                                   IconButton(
                                     key: const ValueKey('reset-button'),
-                                    icon: const Icon(Icons.restart_alt_outlined),
+                                    icon: const Icon(
+                                      Icons.restart_alt_outlined,
+                                    ),
                                     tooltip: 'Start over',
                                     onPressed: _resetAll,
                                   ),
@@ -779,30 +811,47 @@ class _VerseCatchHomePageState extends State<VerseCatchHomePage> {
                       ),
                     ),
                     if (footerVisible) ...[
-                      GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onVerticalDragUpdate: (details) {
-                          if (panelsHeight <= 0) return;
-                          setState(() {
-                            final adjusted =
-                                _bodyRatio +
-                                (details.delta.dy / panelsHeight).clamp(
-                                  -0.04,
-                                  0.04,
-                                );
-                            _bodyRatio = adjusted.clamp(0.35, 0.8);
-                          });
-                        },
-                        child: SizedBox(
-                          key: const ValueKey('footer-resize-handle'),
-                          height: dividerHeight + 16,
-                          child: Center(
-                            child: Container(
-                              width: 72,
-                              height: 3,
-                              decoration: BoxDecoration(
-                                color: theme.colorScheme.outlineVariant,
-                                borderRadius: BorderRadius.circular(999),
+                      MouseRegion(
+                        cursor: SystemMouseCursors.resizeUpDown,
+                        child: Listener(
+                          onPointerSignal: (event) {
+                            if (event is! PointerScrollEvent) return;
+                            _adjustBodyRatio(
+                              deltaDy: event.scrollDelta.dy,
+                              panelsHeight: panelsHeight,
+                              minBodyRatio: minBodyRatio,
+                              maxBodyRatio: maxBodyRatio,
+                              maxStep: 0.1,
+                              sensitivity: 0.9,
+                            );
+                          },
+                          child: GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onVerticalDragUpdate: (details) {
+                              _adjustBodyRatio(
+                                deltaDy: details.delta.dy,
+                                panelsHeight: panelsHeight,
+                                minBodyRatio: minBodyRatio,
+                                maxBodyRatio: maxBodyRatio,
+                                maxStep: _isDesktopPlatform ? 0.12 : 0.08,
+                                sensitivity: _isDesktopPlatform ? 1.4 : 1.0,
+                              );
+                            },
+                            onDoubleTap: () {
+                              setState(() => _bodyRatio = 0.6);
+                            },
+                            child: SizedBox(
+                              key: const ValueKey('footer-resize-handle'),
+                              height: resizeHandleHeight,
+                              child: Center(
+                                child: Container(
+                                  width: 72,
+                                  height: 3,
+                                  decoration: BoxDecoration(
+                                    color: theme.colorScheme.outlineVariant,
+                                    borderRadius: BorderRadius.circular(999),
+                                  ),
+                                ),
                               ),
                             ),
                           ),
@@ -817,10 +866,6 @@ class _VerseCatchHomePageState extends State<VerseCatchHomePage> {
                             children: [
                               Row(
                                 children: [
-                                  Text(
-                                    'Biblical text',
-                                    style: theme.textTheme.titleMedium,
-                                  ),
                                   if (_activeReference != null) ...[
                                     const SizedBox(width: 8),
                                     Text(
@@ -857,9 +902,12 @@ class _VerseCatchHomePageState extends State<VerseCatchHomePage> {
                                     const SizedBox(width: 6),
                                     Text(
                                       '(${selectedBibleVersion.name})',
-                                      style: theme.textTheme.bodySmall?.copyWith(
-                                        color: theme.colorScheme.onSurfaceVariant,
-                                      ),
+                                      style: theme.textTheme.bodySmall
+                                          ?.copyWith(
+                                            color: theme
+                                                .colorScheme
+                                                .onSurfaceVariant,
+                                          ),
                                     ),
                                   ],
                                   const Spacer(),
