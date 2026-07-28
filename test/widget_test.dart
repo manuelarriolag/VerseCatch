@@ -133,9 +133,12 @@ void main() {
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
+    String? copiedText;
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(SystemChannels.platform, (methodCall) async {
           if (methodCall.method == 'Clipboard.setData') {
+            final arguments = methodCall.arguments as Map<Object?, Object?>?;
+            copiedText = arguments?['text'] as String?;
             return null;
           }
           return null;
@@ -165,6 +168,8 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));
 
+    expect(copiedText, isNotNull);
+    expect(copiedText, startsWith('John 3:16 (NVI-S)\n'));
     expect(find.byKey(const ValueKey('copied-icon')), findsOneWidget);
 
     await tester.pump(const Duration(milliseconds: 1500));
@@ -194,6 +199,81 @@ void main() {
 
     expect(find.text('NVI-S'), findsAtLeastNWidgets(1));
     expect(find.text('NBLA'), findsOneWidget);
+  });
+
+  testWidgets('shows Bible version name on wider devices', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(VerseCatchApp(bibleTextLookup: _fakeBibleLookup));
+    await tester.pumpAndSettle();
+
+    await _enterTextAndUnfocus(tester, 'John 3:16');
+    await tester.tap(find.byKey(const ValueKey('ref-chip-John 3:16')));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('(${kSupportedBibleVersions.first.name})'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('resizes footer section by dragging split handle', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(VerseCatchApp(bibleTextLookup: _fakeBibleLookup));
+    await tester.pumpAndSettle();
+
+    await _enterTextAndUnfocus(tester, 'John 3:16');
+    await tester.tap(find.byKey(const ValueKey('ref-chip-John 3:16')));
+    await tester.pumpAndSettle();
+
+    final textFieldFinder = find.byKey(const ValueKey('biblical-text-field'));
+    final beforeSize = tester.getSize(textFieldFinder).height;
+
+    await tester.drag(
+      find.byKey(const ValueKey('footer-resize-handle')),
+      const Offset(0, -120),
+    );
+    await tester.pumpAndSettle();
+
+    final afterSize = tester.getSize(textFieldFinder).height;
+    expect(afterSize, isNot(equals(beforeSize)));
+  });
+
+  testWidgets('hides header and footer when entering edit mode', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(VerseCatchApp(bibleTextLookup: _fakeBibleLookup));
+    await tester.pumpAndSettle();
+
+    await _enterTextAndUnfocus(tester, 'John 3:16');
+    await tester.tap(find.byKey(const ValueKey('ref-chip-John 3:16')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Input source'), findsOneWidget);
+    expect(find.text('Biblical text'), findsOneWidget);
+
+    await tester.tap(find.text('Edit'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Input source'), findsNothing);
+    expect(find.text('Biblical text'), findsNothing);
+    expect(find.byKey(const ValueKey('source-text-field')), findsOneWidget);
   });
 
   test('extractVerseReferences finds scripture references', () {
@@ -234,6 +314,15 @@ void main() {
     expect(
       extractVerseReferences('principal. Efe 3:3'),
       isNot(contains('principal. Efe 3:3')),
+    );
+  });
+
+  test('extractVerseReferences recognizes chapter-only references', () {
+    expect(
+      extractVerseReferences(
+        'salmos 51, Jud 4, Sal 119, judas 4',
+      ),
+      containsAll(<String>['salmos 51', 'Jud 1:4', 'Sal 119', 'judas 1:4']),
     );
   });
 }

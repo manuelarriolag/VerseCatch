@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:camera/camera.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image/image.dart' as img;
@@ -114,6 +115,9 @@ class _VerseCatchHomePageState extends State<VerseCatchHomePage> {
   int _bibleLookupRequestId = 0;
   int _selectedBibleVersionId = kYouVersionBibleVersionId;
   bool _loadingBibleText = false;
+
+  bool get _supportsCameraCapture =>
+      !kIsWeb && (Platform.isAndroid || Platform.isIOS);
 
   int _fallbackBibleVersionId() {
     return kSupportedBibleVersions
@@ -328,7 +332,8 @@ class _VerseCatchHomePageState extends State<VerseCatchHomePage> {
     final bibleText = _getSelectedBibleText();
     if (referenceText == null || bibleText == null || bibleText.isEmpty) return;
 
-    final clipboardText = '$referenceText\n"$bibleText"';
+    final versionCode = _selectedBibleVersionOption().code;
+    final clipboardText = '$referenceText ($versionCode)\n"$bibleText"';
     await Clipboard.setData(ClipboardData(text: clipboardText));
     if (!mounted) return;
 
@@ -455,6 +460,18 @@ class _VerseCatchHomePageState extends State<VerseCatchHomePage> {
   }
 
   Future<void> _openCameraCapture() async {
+    if (!_supportsCameraCapture) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Camera capture is currently supported on iOS and Android only.',
+            ),
+          ),
+        );
+      }
+      return;
+    }
     final imagePath = await Navigator.push<String>(
       context,
       MaterialPageRoute(
@@ -484,7 +501,7 @@ class _VerseCatchHomePageState extends State<VerseCatchHomePage> {
   Future<String> _runOcrOnImage(String imagePath) async {
     final preparedImage = await _prepareImageForOcr(imagePath);
     try {
-      if (!Platform.isMacOS) {
+      if (!(Platform.isMacOS || Platform.isIOS)) {
         return '';
       }
 
@@ -574,8 +591,12 @@ class _VerseCatchHomePageState extends State<VerseCatchHomePage> {
         .length;
     final canDone = _isEditing && _verseMatches.isNotEmpty;
     final canEdit = !_isEditing;
+    final immersiveEditMode = _isEditing && _verseMatches.isNotEmpty;
+    final headerVisible = !immersiveEditMode;
     final footerVisible =
-        _textController.text.trim().isNotEmpty && _activeReference != null;
+        !immersiveEditMode &&
+        _textController.text.trim().isNotEmpty &&
+        _activeReference != null;
 
     return Scaffold(
       body: Stack(
@@ -584,14 +605,15 @@ class _VerseCatchHomePageState extends State<VerseCatchHomePage> {
             child: LayoutBuilder(
               builder: (context, constraints) {
                 const dividerHeight = 8.0;
-                final headerHeight = kShowBanner
-                    ? (constraints.maxHeight * 0.42).clamp(280.0, 360.0)
-                    : (constraints.maxHeight * 0.36).clamp(248.0, 320.0);
-                final contentHeight =
-                    (constraints.maxHeight - headerHeight - 16.0).clamp(
-                      0.0,
-                      double.infinity,
-                    );
+                final headerHeight = headerVisible
+                    ? (kShowBanner
+                          ? (constraints.maxHeight * 0.42).clamp(280.0, 360.0)
+                          : (constraints.maxHeight * 0.36).clamp(248.0, 320.0))
+                    : 0.0;
+                final contentHeight = (constraints.maxHeight -
+                        headerHeight -
+                        (headerVisible ? 16.0 : 0.0))
+                    .clamp(0.0, double.infinity);
                 final panelsHeight = (contentHeight - dividerHeight).clamp(
                   0.0,
                   double.infinity,
@@ -645,57 +667,60 @@ class _VerseCatchHomePageState extends State<VerseCatchHomePage> {
                 final hasRealBibleText =
                     (_selectedBibleText?.isNotEmpty ?? false);
                 final selectedBibleVersion = _selectedBibleVersionOption();
+                final showBibleVersionName = constraints.maxWidth >= 430;
 
                 return Column(
                   children: [
-                    SizedBox(
-                      height: headerHeight,
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-                        child: Column(
-                          children: [
-                            Row(
-                              children: [
-                                Text(
-                                  'Verse Catch',
-                                  style: theme.textTheme.titleLarge,
-                                ),
-                                const Spacer(),
-                                if (kEnableHistoryFeature && hasText)
-                                  IconButton(
-                                    icon: const Icon(Icons.save_outlined),
-                                    tooltip: 'Save to history',
-                                    onPressed: _processing
-                                        ? null
-                                        : _saveCapture,
+                    if (headerVisible)
+                      SizedBox(
+                        height: headerHeight,
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                          child: Column(
+                            children: [
+                              Row(
+                                children: [
+                                  Text(
+                                    'Verse Catch',
+                                    style: theme.textTheme.titleLarge,
                                   ),
-                                IconButton(
-                                  key: const ValueKey('reset-button'),
-                                  icon: const Icon(Icons.restart_alt_outlined),
-                                  tooltip: 'Start over',
-                                  onPressed: _resetAll,
-                                ),
+                                  const Spacer(),
+                                  if (kEnableHistoryFeature && hasText)
+                                    IconButton(
+                                      icon: const Icon(Icons.save_outlined),
+                                      tooltip: 'Save to history',
+                                      onPressed: _processing
+                                          ? null
+                                          : _saveCapture,
+                                    ),
+                                  IconButton(
+                                    key: const ValueKey('reset-button'),
+                                    icon: const Icon(Icons.restart_alt_outlined),
+                                    tooltip: 'Start over',
+                                    onPressed: _resetAll,
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 6),
+                              if (kShowBanner) ...[
+                                const _BannerImage(),
+                                const SizedBox(height: 10),
                               ],
-                            ),
-                            const SizedBox(height: 6),
-                            if (kShowBanner) ...[
-                              const _BannerImage(),
-                              const SizedBox(height: 10),
+                              _SourceSelectorCard(
+                                selected: _inputSource,
+                                processing: _processing,
+                                lastImagePath: _lastImagePath,
+                                compactVertical: constraints.maxHeight < 760,
+                                cameraSupported: _supportsCameraCapture,
+                                onSourceChanged: _changeSource,
+                                onPickFile: _pickTextFile,
+                                onPickImage: _pickImage,
+                                onOpenCamera: _openCameraCapture,
+                              ),
                             ],
-                            _SourceSelectorCard(
-                              selected: _inputSource,
-                              processing: _processing,
-                              lastImagePath: _lastImagePath,
-                              compactVertical: constraints.maxHeight < 760,
-                              onSourceChanged: _changeSource,
-                              onPickFile: _pickTextFile,
-                              onPickImage: _pickImage,
-                              onOpenCamera: _openCameraCapture,
-                            ),
-                          ],
+                          ),
                         ),
                       ),
-                    ),
                     SizedBox(
                       height: bodyHeight,
                       child: Padding(
@@ -755,6 +780,7 @@ class _VerseCatchHomePageState extends State<VerseCatchHomePage> {
                     ),
                     if (footerVisible) ...[
                       GestureDetector(
+                        behavior: HitTestBehavior.opaque,
                         onVerticalDragUpdate: (details) {
                           if (panelsHeight <= 0) return;
                           setState(() {
@@ -768,7 +794,8 @@ class _VerseCatchHomePageState extends State<VerseCatchHomePage> {
                           });
                         },
                         child: SizedBox(
-                          height: dividerHeight,
+                          key: const ValueKey('footer-resize-handle'),
+                          height: dividerHeight + 16,
                           child: Center(
                             child: Container(
                               width: 72,
@@ -826,13 +853,15 @@ class _VerseCatchHomePageState extends State<VerseCatchHomePage> {
                                       onChanged: _onBibleVersionChanged,
                                     ),
                                   ),
-                                  const SizedBox(width: 6),
-                                  Text(
-                                    '(${selectedBibleVersion.name})',
-                                    style: theme.textTheme.bodySmall?.copyWith(
-                                      color: theme.colorScheme.onSurfaceVariant,
+                                  if (showBibleVersionName) ...[
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      '(${selectedBibleVersion.name})',
+                                      style: theme.textTheme.bodySmall?.copyWith(
+                                        color: theme.colorScheme.onSurfaceVariant,
+                                      ),
                                     ),
-                                  ),
+                                  ],
                                   const Spacer(),
                                   IconButton.filledTonal(
                                     key: const ValueKey(
@@ -1006,6 +1035,7 @@ class _SourceSelectorCard extends StatelessWidget {
     required this.processing,
     required this.lastImagePath,
     required this.compactVertical,
+    required this.cameraSupported,
     required this.onSourceChanged,
     required this.onPickFile,
     required this.onPickImage,
@@ -1016,6 +1046,7 @@ class _SourceSelectorCard extends StatelessWidget {
   final bool processing;
   final String? lastImagePath;
   final bool compactVertical;
+  final bool cameraSupported;
   final ValueChanged<InputSource> onSourceChanged;
   final VoidCallback onPickFile;
   final VoidCallback onPickImage;
@@ -1061,6 +1092,9 @@ class _SourceSelectorCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final effectiveSelected = !cameraSupported && selected == InputSource.camera
+        ? InputSource.image
+        : selected;
     final cardPadding = compactVertical ? 12.0 : 16.0;
     final titleSpacing = compactVertical ? 8.0 : 10.0;
     final controlsSpacing = compactVertical ? 8.0 : 12.0;
@@ -1122,23 +1156,24 @@ class _SourceSelectorCard extends StatelessWidget {
                                     overflow: TextOverflow.ellipsis,
                                   ),
                                 ),
-                                ButtonSegment(
-                                  value: InputSource.camera,
-                                  icon: const Icon(Icons.camera_alt_outlined),
-                                  label: Text(
-                                    isCompact ? 'Cam' : 'Camera',
-                                    overflow: TextOverflow.ellipsis,
+                                if (cameraSupported)
+                                  ButtonSegment(
+                                    value: InputSource.camera,
+                                    icon: const Icon(Icons.camera_alt_outlined),
+                                    label: Text(
+                                      isCompact ? 'Cam' : 'Camera',
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
                                   ),
-                                ),
                               ],
-                              selected: {selected},
+                              selected: {effectiveSelected},
                               onSelectionChanged: (s) =>
                                   onSourceChanged(s.first),
                             ),
                             SizedBox(height: controlsSpacing),
                             SizedBox(
                               width: double.infinity,
-                              child: _buildActions(context),
+                              child: _buildActions(context, effectiveSelected),
                             ),
                           ],
                         ),
@@ -1146,7 +1181,11 @@ class _SourceSelectorCard extends StatelessWidget {
                       const SizedBox(width: 12),
                       Expanded(
                         flex: 2,
-                        child: _buildPreview(context, isCompact),
+                        child: _buildPreview(
+                          context,
+                          isCompact,
+                          effectiveSelected,
+                        ),
                       ),
                     ],
                   );
@@ -1159,8 +1198,8 @@ class _SourceSelectorCard extends StatelessWidget {
     );
   }
 
-  Widget _buildActions(BuildContext context) {
-    switch (selected) {
+  Widget _buildActions(BuildContext context, InputSource selectedSource) {
+    switch (selectedSource) {
       case InputSource.text:
         return FilledButton.icon(
           onPressed: processing ? null : onPickFile,
@@ -1211,14 +1250,18 @@ class _SourceSelectorCard extends StatelessWidget {
     }
   }
 
-  Widget _buildPreview(BuildContext context, bool isCompact) {
+  Widget _buildPreview(
+    BuildContext context,
+    bool isCompact,
+    InputSource selectedSource,
+  ) {
     final theme = Theme.of(context);
     final previewHeight = isCompact ? 112.0 : 140.0;
     final previewIconSize = isCompact ? 30.0 : 36.0;
     final previewPadding = isCompact ? 10.0 : 12.0;
     final previewRadius = isCompact ? 10.0 : 12.0;
 
-    switch (selected) {
+    switch (selectedSource) {
       case InputSource.text:
         return Container(
           height: previewHeight,
@@ -1290,7 +1333,7 @@ class _SourceSelectorCard extends StatelessWidget {
               ),
               const SizedBox(height: 8),
               Text(
-                selected == InputSource.camera
+                selectedSource == InputSource.camera
                     ? 'No photo yet'
                     : 'No image yet',
                 style: theme.textTheme.titleSmall,
@@ -1826,6 +1869,17 @@ List<String> extractVerseReferences(String text) {
     }
   }
 
+  for (final match in _kChapterOnlyPattern.allMatches(normalized)) {
+    final book = match.group(1)!;
+    final chapter = match.group(2)!;
+    if (!_isKnownBiblicalBook(book)) {
+      continue;
+    }
+    references.add(
+      _normalizeChapterOnlyReference(book: book, chapterOrVerse: chapter),
+    );
+  }
+
   return references.toList(growable: false);
 }
 
@@ -1845,7 +1899,7 @@ Future<String?> lookupBibleTextFromYouVersion(
   }
 
   final match = RegExp(
-    r'^(.*)\s+(\d{1,3})\s*:\s*(\d{1,3})(?:\s*-\s*(\d{1,3}))?$',
+    r'^(.*)\s+(\d{1,3})(?:(?:\s*:\s*|\s*\.\s*|\s*,\s*|\s+)(\d{1,3})(?:\s*-\s*(\d{1,3}))?)?$',
   ).firstMatch(reference.trim());
   if (match == null) return null;
 
@@ -1858,9 +1912,23 @@ Future<String?> lookupBibleTextFromYouVersion(
       'Unsupported biblical book for remote lookup: ${match.group(1)}',
     );
   }
-  final chapter = match.group(2)!;
-  final verse = match.group(3)!;
+  var chapter = match.group(2)!;
+  var verse = match.group(3);
   final verseEnd = match.group(4);
+  if (verse == null &&
+      _kSingleChapterBookKeys.contains(book) &&
+      int.parse(chapter) > 1) {
+    verse = chapter;
+    chapter = '1';
+  }
+  if (verse == null) {
+    return _fetchChapterContentByVerses(
+      bibleVersionId: bibleVersionId,
+      usfmBook: usfmBook,
+      chapter: chapter,
+    );
+  }
+
   final passageId = verseEnd == null
       ? '$usfmBook.$chapter.$verse'
       : '$usfmBook.$chapter.$verse-$verseEnd';
@@ -1924,6 +1992,9 @@ Future<String> _fetchYouVersionPassageContent({
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw YouVersionApiException(
         'YouVersion API returned HTTP ${response.statusCode}: $responseBody',
+        statusCode: response.statusCode,
+        responseBody: responseBody,
+        passageId: passageId,
       );
     }
 
@@ -1938,6 +2009,40 @@ Future<String> _fetchYouVersionPassageContent({
   } finally {
     client.close(force: true);
   }
+}
+
+Future<String?> _fetchChapterContentByVerses({
+  required int bibleVersionId,
+  required String usfmBook,
+  required String chapter,
+}) async {
+  const maxVerseProbe = 200;
+  final formattedLines = <String>[];
+  for (var verseNumber = 1; verseNumber <= maxVerseProbe; verseNumber++) {
+    final passageId = '$usfmBook.$chapter.$verseNumber';
+    try {
+      final content = await _fetchYouVersionPassageContent(
+        bibleVersionId: bibleVersionId,
+        passageId: passageId,
+      );
+      final normalizedText = formatBibleTextForDisplay(content: content);
+      if (normalizedText != null && normalizedText.isNotEmpty) {
+        formattedLines.add('$verseNumber: $normalizedText');
+      }
+    } on YouVersionApiException catch (error) {
+      if (error.statusCode != 404) rethrow;
+      if (verseNumber == 1) {
+        throw YouVersionApiException(
+          'Bible passage $usfmBook.$chapter for version $bibleVersionId not found',
+          statusCode: 404,
+          passageId: '$usfmBook.$chapter',
+        );
+      }
+      break;
+    }
+  }
+  if (formattedLines.isEmpty) return null;
+  return formattedLines.join('\n');
 }
 
 String? formatBibleTextForDisplay({required String content}) {
@@ -1975,6 +2080,8 @@ String _canonicalBookKey(String book) {
       return 'philippians';
     case 'psalm':
     case 'psalms':
+    case 'salmos':
+    case 'sal':
     case 'ps':
       return 'psalm';
     case 'proverbs':
@@ -1997,9 +2104,21 @@ String _canonicalBookKey(String book) {
     case 'efe':
     case 'efesios':
       return 'ephesians';
+    case 'judas':
     default:
       return normalized;
   }
+}
+
+String _normalizeChapterOnlyReference({
+  required String book,
+  required String chapterOrVerse,
+}) {
+  final canonicalBook = _canonicalBookKey(book);
+  if (_kSingleChapterBookKeys.contains(canonicalBook)) {
+    return '$book 1:$chapterOrVerse';
+  }
+  return '$book $chapterOrVerse';
 }
 
 const Set<String> _kKnownBibleBooks = {
@@ -2040,6 +2159,8 @@ const Set<String> _kKnownBibleBooks = {
   'job',
   'psalm',
   'psalms',
+  'salmos',
+  'sal',
   'ps',
   'proverbs',
   'prov',
@@ -2142,6 +2263,7 @@ const Set<String> _kKnownBibleBooks = {
   '3jn',
   'jude',
   'jud',
+  'judas',
   'revelation',
   'rev',
 };
@@ -2184,6 +2306,8 @@ const _kUsfmBookCodeByBookKey = <String, String>{
   'job': 'JOB',
   'psalm': 'PSA',
   'psalms': 'PSA',
+  'salmos': 'PSA',
+  'sal': 'PSA',
   'ps': 'PSA',
   'proverbs': 'PRO',
   'prov': 'PRO',
@@ -2283,8 +2407,23 @@ const _kUsfmBookCodeByBookKey = <String, String>{
   '3jn': '3JN',
   'jude': 'JUD',
   'jud': 'JUD',
+  'judas': 'JUD',
   'revelation': 'REV',
   'rev': 'REV',
+};
+
+const Set<String> _kSingleChapterBookKeys = {
+  'obadiah',
+  'obad',
+  'philemon',
+  'phm',
+  '2john',
+  '2jn',
+  '3john',
+  '3jn',
+  'jude',
+  'jud',
+  'judas',
 };
 
 String _joinApiPath(String basePath, String suffix) {
@@ -2351,8 +2490,16 @@ class YouVersionConfigurationException implements Exception {
 }
 
 class YouVersionApiException implements Exception {
-  const YouVersionApiException(this.message);
+  const YouVersionApiException(
+    this.message, {
+    this.statusCode,
+    this.responseBody,
+    this.passageId,
+  });
   final String message;
+  final int? statusCode;
+  final String? responseBody;
+  final String? passageId;
   @override
   String toString() => message;
 }
@@ -2446,6 +2593,10 @@ final _kContinuationPattern = RegExp(
   r'^\s*[,;]\s*(\d{1,3})\s*(?::|\.|,|\s)\s*(\d{1,3})(?:\s*-\s*(\d{1,3}))?',
 );
 
+final _kChapterOnlyPattern = RegExp(
+  r'\b((?:[1-3]\s+)?[A-Za-zÁÉÍÓÚáéíóúÑñ]+\.?)\s+(\d{1,3})\b(?!\s*(?::|\.|,)\s*\d)(?!\s+\d)',
+);
+
 // ---------------------------------------------------------------------------
 // extractVerseMatches — returns references WITH their positions in [text]
 // ---------------------------------------------------------------------------
@@ -2491,6 +2642,24 @@ List<VerseMatch> extractVerseMatches(String text) {
       );
       cursor += cont.end;
     }
+  }
+
+  for (final match in _kChapterOnlyPattern.allMatches(text)) {
+    final book = match.group(1)!;
+    final chapter = match.group(2)!;
+    if (!_isKnownBiblicalBook(book)) {
+      continue;
+    }
+    matches.add(
+      VerseMatch(
+        reference: _normalizeChapterOnlyReference(
+          book: book,
+          chapterOrVerse: chapter,
+        ),
+        start: match.start,
+        end: match.end,
+      ),
+    );
   }
 
   return matches;
