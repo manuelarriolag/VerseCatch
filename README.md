@@ -56,6 +56,50 @@ Recomendacion de verificacion inicial:
 flutter doctor
 ```
 
+## Configuracion de API YouVersion
+
+El texto bíblico se consulta de forma remota usando la API de YouVersion.
+
+Ejecuta la app con tu App Key:
+
+```bash
+flutter run \
+  --dart-define=YOUVERSION_APP_KEY=<TU_APP_KEY> \
+  --dart-define=YOUVERSION_BIBLE_VERSION_ID=128
+```
+
+En la UI puedes cambiar la versión desde el selector del panel "Biblical text".
+La selección se persiste localmente en SQLite (`versecatch.db`) y se reutiliza al abrir la app.
+Opciones soportadas:
+
+- `128` — `NVI-S` — Nueva Versión Internacional 2025
+- `103` — `NBLA` — Nueva Biblia de las Américas
+- `127` — `NTV` — Nueva Traducción Viviente
+- `149` — `RVR1960` — Reina Valera 1960
+- `3291` — `VBL` — Biblia Libre
+
+Opcionalmente puedes cambiar el host base:
+
+```bash
+--dart-define=YOUVERSION_API_BASE_URL=https://api.youversion.com
+```
+
+Tambien puedes cargar todas las variables desde archivo:
+
+```bash
+flutter run --dart-define-from-file=env.dev.json
+```
+
+Ejemplo de `env.dev.json` / `env.release.json`:
+
+```json
+{
+  "YOUVERSION_APP_KEY": "TU_APP_KEY",
+  "YOUVERSION_BIBLE_VERSION_ID": "128",
+  "YOUVERSION_API_BASE_URL": "https://api.youversion.com"
+}
+```
+
 ## Crear un ambiente local para desarrollo
 
 ### 1. Clonar el repositorio
@@ -88,6 +132,80 @@ Si quieres elegir un dispositivo especifico:
 ```bash
 flutter run -d <device_id>
 ```
+
+## Compilacion release (sin VSCode/Xcode abiertos)
+
+Compila con `--dart-define` o `--dart-define-from-file` porque estas variables se leen en build time.
+
+### macOS
+
+```bash
+flutter build macos --release --dart-define-from-file=env.release.json
+```
+
+Artefacto generado:
+
+- `build/macos/Build/Products/Release/VerseCatch.app`
+
+Ejecutar app compilada:
+
+```bash
+open build/macos/Build/Products/Release/VerseCatch.app
+```
+
+Copiar app en /Applications:
+
+```bash
+cp -R build/macos/Build/Products/Release/versecatch.app /Applications/
+open /Applications/versecatch.app
+```
+
+### Android (APK)
+
+```bash
+flutter build apk --release --dart-define-from-file=env.release.json
+```
+
+Artefacto generado:
+
+- `build/app/outputs/flutter-apk/app-release.apk`
+
+Instalar en dispositivo conectado:
+
+```bash
+flutter install
+```
+
+O instalar manualmente:
+
+```bash
+adb install -r build/app/outputs/flutter-apk/app-release.apk
+```
+
+### Android (AAB para Play Store)
+
+```bash
+flutter build appbundle --release --dart-define-from-file=env.release.json
+```
+
+Artefacto generado:
+
+- `build/app/outputs/bundle/release/app-release.aab`
+
+### iOS (IPA)
+
+```bash
+flutter build ipa --release --dart-define-from-file=env.release.json
+```
+
+Artefacto generado:
+
+- `build/ios/ipa/*.ipa`
+
+Instalacion/distribucion:
+
+- subir a TestFlight/App Store Connect con Transporter o Xcode Organizer;
+- para instalar directo en dispositivo iOS se requiere firma/provisioning validos.
 
 ## Configuracion adicional por plataforma
 
@@ -125,6 +243,23 @@ cd ..
 ```
 
 > Nota: la camara real puede requerir un dispositivo fisico para probar el flujo completo de captura.
+
+
+## Resumen rápido de artefactos
+### macOS app:
+build/macos/Build/Products/Release/VerseCatch.app
+Ejecutar: open build/macos/Build/Products/Release/VerseCatch.app
+
+### Android APK:
+build/app/outputs/flutter-apk/app-release.apk
+Instalar: adb install -r build/app/outputs/flutter-apk/app-release.apk
+
+### Android AAB (Play Store):
+build/app/outputs/bundle/release/app-release.aab
+
+### iOS IPA:
+build/ios/ipa/*.ipa
+Subida típica: TestFlight/App Store Connect (Transporter/Xcode Organizer)
 
 ## Flujo funcional de la app
 

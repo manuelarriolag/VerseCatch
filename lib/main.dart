@@ -3,6 +3,8 @@ import 'dart:io';
 
 import 'package:camera/camera.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image/image.dart' as img;
@@ -12,10 +14,48 @@ import 'package:sqflite/sqflite.dart';
 
 enum InputSource { text, image, camera }
 
+typedef BibleTextLookup =
+    Future<String?> Function(String reference, int bibleVersionId);
+
 const bool kEnableHistoryFeature = false;
 const bool kShowBanner = false;
 const String kNoBibleTextMessage =
     'Select a highlighted reference to view biblical text.';
+const String kLoadingBibleTextMessage = 'Loading biblical text...';
+const String kYouVersionApiBaseUrl = String.fromEnvironment(
+  'YOUVERSION_API_BASE_URL',
+  defaultValue: 'https://api.youversion.com',
+);
+const String kYouVersionAppKey = String.fromEnvironment('YOUVERSION_APP_KEY');
+const int kYouVersionBibleVersionId = int.fromEnvironment(
+  'YOUVERSION_BIBLE_VERSION_ID',
+  defaultValue: 128,
+);
+const List<BibleVersionOption> kSupportedBibleVersions = [
+  BibleVersionOption(
+    id: 128,
+    code: 'NVI-S',
+    name: 'Nueva Versión Internacional 2025',
+  ),
+  BibleVersionOption(
+    id: 103,
+    code: 'NBLA',
+    name: 'Nueva Biblia de las Américas',
+  ),
+  BibleVersionOption(
+    id: 127,
+    code: 'NTV',
+    name: 'Nueva Traducción Viviente',
+    enabled: false,
+  ),
+  BibleVersionOption(
+    id: 149,
+    code: 'RVR1960',
+    name: 'Reina Valera 1960',
+    enabled: false,
+  ),
+  BibleVersionOption(id: 3291, code: 'VBL', name: 'Biblia Libre'),
+];
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -23,7 +63,12 @@ Future<void> main() async {
 }
 
 class VerseCatchApp extends StatelessWidget {
-  const VerseCatchApp({super.key});
+  const VerseCatchApp({
+    super.key,
+    this.bibleTextLookup = lookupBibleTextFromYouVersion,
+  });
+
+  final BibleTextLookup bibleTextLookup;
 
   @override
   Widget build(BuildContext context) {
@@ -34,13 +79,15 @@ class VerseCatchApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo),
         useMaterial3: true,
       ),
-      home: const VerseCatchHomePage(),
+      home: VerseCatchHomePage(bibleTextLookup: bibleTextLookup),
     );
   }
 }
 
 class VerseCatchHomePage extends StatefulWidget {
-  const VerseCatchHomePage({super.key});
+  const VerseCatchHomePage({super.key, required this.bibleTextLookup});
+
+  final BibleTextLookup bibleTextLookup;
 
   @override
   State<VerseCatchHomePage> createState() => _VerseCatchHomePageState();
@@ -64,11 +111,70 @@ class _VerseCatchHomePageState extends State<VerseCatchHomePage> {
   List<CaptureRecord> _history = const [];
   bool _copiedFeedbackVisible = false;
   double _bodyRatio = 0.6;
+  String? _selectedBibleText;
+  String _biblePanelMessage = kNoBibleTextMessage;
+  int _bibleLookupRequestId = 0;
+  int _selectedBibleVersionId = kYouVersionBibleVersionId;
+  bool _loadingBibleText = false;
+
+  bool get _supportsCameraCapture =>
+      !kIsWeb && (Platform.isAndroid || Platform.isIOS);
+  bool get _isDesktopPlatform =>
+      !kIsWeb && (Platform.isMacOS || Platform.isWindows || Platform.isLinux);
+
+  void _adjustBodyRatio({
+    required double deltaDy,
+    required double panelsHeight,
+    required double minBodyRatio,
+    required double maxBodyRatio,
+    required double maxStep,
+    required double sensitivity,
+  }) {
+    if (panelsHeight <= 0) return;
+    final ratioDelta = ((deltaDy / panelsHeight) * sensitivity).clamp(
+      -maxStep,
+      maxStep,
+    );
+    final nextRatio = (_bodyRatio + ratioDelta).clamp(
+      minBodyRatio,
+      maxBodyRatio,
+    );
+    if (nextRatio == _bodyRatio) return;
+    setState(() {
+      _bodyRatio = nextRatio;
+    });
+  }
+
+  int _fallbackBibleVersionId() {
+    return kSupportedBibleVersions
+        .firstWhere(
+          (version) => version.enabled,
+          orElse: () => kSupportedBibleVersions.first,
+        )
+        .id;
+  }
+
+  bool _isVersionEnabled(int versionId) {
+    return kSupportedBibleVersions.any(
+      (version) => version.id == versionId && version.enabled,
+    );
+  }
+
+  BibleVersionOption _selectedBibleVersionOption() {
+    return kSupportedBibleVersions.firstWhere(
+      (version) => version.id == _selectedBibleVersionId,
+      orElse: () => kSupportedBibleVersions.first,
+    );
+  }
 
   @override
   void initState() {
     super.initState();
+    if (!_isVersionEnabled(_selectedBibleVersionId)) {
+      _selectedBibleVersionId = _fallbackBibleVersionId();
+    }
     _loadHistory();
+    _loadBibleVersionPreference();
     _textController.addListener(_onControllerChanged);
     _focusNode = FocusNode();
     _focusNode.addListener(_onFocusChanged);
@@ -170,21 +276,81 @@ class _VerseCatchHomePageState extends State<VerseCatchHomePage> {
   }
 
   String? _getSelectedBibleText() {
-    final activeReference = _activeReference;
-    if (activeReference == null) return null;
-    return lookupBibleText(activeReference);
+    return _selectedBibleText;
   }
 
-  void _syncBibleText() {
-    final bibleText = _getSelectedBibleText();
-    final text = (bibleText == null || bibleText.isEmpty)
-        ? kNoBibleTextMessage
-        : bibleText;
-    if (_bibleTextController.text == text) return;
-    _bibleTextController.value = TextEditingValue(
-      text: text,
-      selection: const TextSelection.collapsed(offset: 0),
-    );
+  void _setBiblePanel({required String message, String? bibleText}) {
+    final trimmedText = bibleText?.trim();
+    final selectedText = (trimmedText == null || trimmedText.isEmpty)
+        ? null
+        : trimmedText;
+    final textToShow = selectedText ?? message;
+    final mustUpdateState =
+        _selectedBibleText != selectedText || _biblePanelMessage != message;
+    final mustUpdateController = _bibleTextController.text != textToShow;
+    if (!mustUpdateState && !mustUpdateController) return;
+
+    setState(() {
+      _selectedBibleText = selectedText;
+      _biblePanelMessage = message;
+      if (mustUpdateController) {
+        _bibleTextController.value = TextEditingValue(
+          text: textToShow,
+          selection: const TextSelection.collapsed(offset: 0),
+        );
+      }
+    });
+  }
+
+  Future<void> _syncBibleText() async {
+    final activeReference = _activeReference;
+    if (activeReference == null) {
+      _bibleLookupRequestId++;
+      if (_loadingBibleText) {
+        setState(() => _loadingBibleText = false);
+      }
+      _setBiblePanel(message: kNoBibleTextMessage);
+      return;
+    }
+
+    final requestId = ++_bibleLookupRequestId;
+    if (!_loadingBibleText) {
+      setState(() => _loadingBibleText = true);
+    }
+    _setBiblePanel(message: kLoadingBibleTextMessage);
+
+    try {
+      final bibleText = await widget.bibleTextLookup(
+        activeReference,
+        _selectedBibleVersionId,
+      );
+      if (!mounted || requestId != _bibleLookupRequestId) return;
+      if (bibleText == null || bibleText.trim().isEmpty) {
+        _setBiblePanel(message: 'No biblical text found for $activeReference.');
+        return;
+      }
+      _setBiblePanel(message: kNoBibleTextMessage, bibleText: bibleText);
+    } on YouVersionConfigurationException catch (error) {
+      if (!mounted || requestId != _bibleLookupRequestId) return;
+      _setBiblePanel(message: error.message);
+    } on YouVersionApiException catch (error) {
+      if (!mounted || requestId != _bibleLookupRequestId) return;
+      _setBiblePanel(message: error.message);
+    } on SocketException catch (error) {
+      if (!mounted || requestId != _bibleLookupRequestId) return;
+      _setBiblePanel(
+        message: 'Network error while loading biblical text: $error',
+      );
+    } on FormatException catch (error) {
+      if (!mounted || requestId != _bibleLookupRequestId) return;
+      _setBiblePanel(
+        message: 'Invalid response from biblical text API: $error',
+      );
+    } finally {
+      if (mounted && requestId == _bibleLookupRequestId && _loadingBibleText) {
+        setState(() => _loadingBibleText = false);
+      }
+    }
   }
 
   Future<void> _copySelectedBibleText() async {
@@ -192,7 +358,8 @@ class _VerseCatchHomePageState extends State<VerseCatchHomePage> {
     final bibleText = _getSelectedBibleText();
     if (referenceText == null || bibleText == null || bibleText.isEmpty) return;
 
-    final clipboardText = '$referenceText\n"$bibleText"';
+    final versionCode = _selectedBibleVersionOption().code;
+    final clipboardText = '$referenceText ($versionCode)\n"$bibleText"';
     await Clipboard.setData(ClipboardData(text: clipboardText));
     if (!mounted) return;
 
@@ -237,6 +404,33 @@ class _VerseCatchHomePageState extends State<VerseCatchHomePage> {
     setState(() => _history = history);
   }
 
+  Future<void> _loadBibleVersionPreference() async {
+    final persistedVersionId = await _store.selectedBibleVersionId();
+    if (!mounted || persistedVersionId == null) return;
+    final supportedVersion = kSupportedBibleVersions.any(
+      (version) => version.id == persistedVersionId,
+    );
+    if (!supportedVersion) return;
+
+    final versionToUse = _isVersionEnabled(persistedVersionId)
+        ? persistedVersionId
+        : _fallbackBibleVersionId();
+    if (versionToUse == _selectedBibleVersionId) return;
+
+    setState(() => _selectedBibleVersionId = versionToUse);
+    await _store.setSelectedBibleVersionId(versionToUse);
+    await _syncBibleText();
+  }
+
+  Future<void> _onBibleVersionChanged(int? selectedVersionId) async {
+    if (selectedVersionId == null) return;
+    if (!_isVersionEnabled(selectedVersionId)) return;
+    if (_selectedBibleVersionId == selectedVersionId) return;
+    setState(() => _selectedBibleVersionId = selectedVersionId);
+    await _store.setSelectedBibleVersionId(selectedVersionId);
+    await _syncBibleText();
+  }
+
   Future<void> _pickTextFile() async {
     final result = await FilePicker.pickFiles(
       type: FileType.custom,
@@ -261,17 +455,15 @@ class _VerseCatchHomePageState extends State<VerseCatchHomePage> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not read file: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Could not read file: $e')));
       }
     }
   }
 
   Future<void> _pickImage() async {
-    final result = await FilePicker.pickFiles(
-      type: FileType.image,
-    );
+    final result = await FilePicker.pickFiles(type: FileType.image);
     if (result == null) return;
     final path = result.files.single.path;
     if (path == null) return;
@@ -294,6 +486,18 @@ class _VerseCatchHomePageState extends State<VerseCatchHomePage> {
   }
 
   Future<void> _openCameraCapture() async {
+    if (!_supportsCameraCapture) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Camera capture is currently supported on iOS and Android only.',
+            ),
+          ),
+        );
+      }
+      return;
+    }
     final imagePath = await Navigator.push<String>(
       context,
       MaterialPageRoute(
@@ -323,24 +527,24 @@ class _VerseCatchHomePageState extends State<VerseCatchHomePage> {
   Future<String> _runOcrOnImage(String imagePath) async {
     final preparedImage = await _prepareImageForOcr(imagePath);
     try {
-     if (!Platform.isMacOS) {
-       return '';
-     }
+      if (!(Platform.isMacOS || Platform.isIOS)) {
+        return '';
+      }
 
-     final result = await _ocrChannel.invokeMethod<String>(
-       'recognizeTextFromPath',
-       {'path': preparedImage.path},
-     );
-     return result?.trim() ?? '';
-   } finally {
-     if (preparedImage.temporary) {
-       try {
-         await File(preparedImage.path).delete();
-       } on FileSystemException catch (e) {
-         debugPrint('Unable to clean temporary OCR image: $e');
-       }
-     }
-   }
+      final result = await _ocrChannel.invokeMethod<String>(
+        'recognizeTextFromPath',
+        {'path': preparedImage.path},
+      );
+      return result?.trim() ?? '';
+    } finally {
+      if (preparedImage.temporary) {
+        try {
+          await File(preparedImage.path).delete();
+        } on FileSystemException catch (e) {
+          debugPrint('Unable to clean temporary OCR image: $e');
+        }
+      }
+    }
   }
 
   Future<({String path, bool temporary})> _prepareImageForOcr(
@@ -378,10 +582,9 @@ class _VerseCatchHomePageState extends State<VerseCatchHomePage> {
       directory.path,
       'ocr_${DateTime.now().microsecondsSinceEpoch}.jpg',
     );
-    await File(outputPath).writeAsBytes(
-      img.encodeJpg(resized, quality: 95),
-      flush: true,
-    );
+    await File(
+      outputPath,
+    ).writeAsBytes(img.encodeJpg(resized, quality: 95), flush: true);
     return (path: outputPath, temporary: true);
   }
 
@@ -398,9 +601,9 @@ class _VerseCatchHomePageState extends State<VerseCatchHomePage> {
     );
     await _loadHistory();
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Saved to history')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Saved to history')));
     }
   }
 
@@ -408,254 +611,379 @@ class _VerseCatchHomePageState extends State<VerseCatchHomePage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final hasText = _textController.text.isNotEmpty;
+    final detectedReferenceCount = _verseMatches
+        .map((vm) => vm.reference)
+        .toSet()
+        .length;
     final canDone = _isEditing && _verseMatches.isNotEmpty;
     final canEdit = !_isEditing;
+    final immersiveEditMode = _isEditing && _verseMatches.isNotEmpty;
+    final headerVisible = !immersiveEditMode;
     final footerVisible =
-        _textController.text.trim().isNotEmpty && _activeReference != null;
+        !immersiveEditMode &&
+        _textController.text.trim().isNotEmpty &&
+        _activeReference != null;
 
     return Scaffold(
-      body: SafeArea(
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            const dividerHeight = 8.0;
-            final headerHeight = kShowBanner
-                ? (constraints.maxHeight * 0.42).clamp(280.0, 360.0)
-                : (constraints.maxHeight * 0.36).clamp(248.0, 320.0);
-            final contentHeight = (constraints.maxHeight - headerHeight - 16.0)
-                .clamp(0.0, double.infinity);
-            final panelsHeight = (contentHeight - dividerHeight).clamp(
-              0.0,
-              double.infinity,
-            );
-            const defaultBodyMinHeight = 240.0;
-            const defaultFooterMinHeight = 180.0;
-            const compactBodyMinFloor = 120.0;
-            const compactFooterMinFloor = 96.0;
+      body: Stack(
+        children: [
+          SafeArea(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                const dividerHeight = 8.0;
+                const minBodyRatio = 0.35;
+                const maxBodyRatio = 0.8;
+                final resizeHandleHeight = dividerHeight + 16.0;
+                final headerHeight = headerVisible
+                    ? (kShowBanner
+                          ? (constraints.maxHeight * 0.42).clamp(280.0, 360.0)
+                          : (constraints.maxHeight * 0.36).clamp(248.0, 320.0))
+                    : 0.0;
+                final contentHeight =
+                    (constraints.maxHeight -
+                            headerHeight -
+                            (headerVisible ? 16.0 : 0.0))
+                        .clamp(0.0, double.infinity);
+                final panelsHeight = (contentHeight - dividerHeight).clamp(
+                  0.0,
+                  double.infinity,
+                );
+                const defaultBodyMinHeight = 240.0;
+                const defaultFooterMinHeight = 180.0;
+                const compactBodyMinFloor = 120.0;
+                const compactFooterMinFloor = 96.0;
 
-            final minHeightsScale = panelsHeight <= 0
-                ? 0.0
-                : (panelsHeight / (defaultBodyMinHeight + defaultFooterMinHeight))
-                    .clamp(0.0, 1.0);
-            final bodyMinHeight =
-                (defaultBodyMinHeight * minHeightsScale).clamp(
-              compactBodyMinFloor,
-              defaultBodyMinHeight,
-            );
-            final footerMinHeight =
-                (defaultFooterMinHeight * minHeightsScale).clamp(
-              compactFooterMinFloor,
-              defaultFooterMinHeight,
-            );
-            var effectiveBodyMinHeight = bodyMinHeight.toDouble();
-            var effectiveFooterMinHeight = footerMinHeight.toDouble();
-            final minimumPanelsHeight =
-                effectiveBodyMinHeight + effectiveFooterMinHeight;
-            if (footerVisible &&
-                panelsHeight > 0 &&
-                minimumPanelsHeight > panelsHeight) {
-              final bodyShare = effectiveBodyMinHeight / minimumPanelsHeight;
-              effectiveBodyMinHeight = panelsHeight * bodyShare;
-              effectiveFooterMinHeight = panelsHeight - effectiveBodyMinHeight;
-            }
-            final bodyMaxHeight = (panelsHeight - effectiveFooterMinHeight).clamp(
-              0.0,
-              double.infinity,
-            );
-            final bodyLowerBound = effectiveBodyMinHeight.clamp(0.0, bodyMaxHeight);
+                final minHeightsScale = panelsHeight <= 0
+                    ? 0.0
+                    : (panelsHeight /
+                              (defaultBodyMinHeight + defaultFooterMinHeight))
+                          .clamp(0.0, 1.0);
+                final bodyMinHeight = (defaultBodyMinHeight * minHeightsScale)
+                    .clamp(compactBodyMinFloor, defaultBodyMinHeight);
+                final footerMinHeight =
+                    (defaultFooterMinHeight * minHeightsScale).clamp(
+                      compactFooterMinFloor,
+                      defaultFooterMinHeight,
+                    );
+                var effectiveBodyMinHeight = bodyMinHeight.toDouble();
+                var effectiveFooterMinHeight = footerMinHeight.toDouble();
+                final minimumPanelsHeight =
+                    effectiveBodyMinHeight + effectiveFooterMinHeight;
+                if (footerVisible &&
+                    panelsHeight > 0 &&
+                    minimumPanelsHeight > panelsHeight) {
+                  final bodyShare =
+                      effectiveBodyMinHeight / minimumPanelsHeight;
+                  effectiveBodyMinHeight = panelsHeight * bodyShare;
+                  effectiveFooterMinHeight =
+                      panelsHeight - effectiveBodyMinHeight;
+                }
+                final bodyMaxHeight = (panelsHeight - effectiveFooterMinHeight)
+                    .clamp(0.0, double.infinity);
+                final bodyLowerBound = effectiveBodyMinHeight.clamp(
+                  0.0,
+                  bodyMaxHeight,
+                );
 
-            final bodyHeight = footerVisible
-                ? (panelsHeight * _bodyRatio).clamp(
-                    bodyLowerBound,
-                    bodyMaxHeight,
-                  )
-                : contentHeight.clamp(compactBodyMinFloor, double.infinity);
-            final footerHeight = footerVisible
-                ? (panelsHeight - bodyHeight).clamp(0.0, double.infinity)
-                : 0.0;
-            final hasRealBibleText =
-                (_getSelectedBibleText()?.isNotEmpty ?? false);
+                final bodyHeight = footerVisible
+                    ? (panelsHeight * _bodyRatio).clamp(
+                        bodyLowerBound,
+                        bodyMaxHeight,
+                      )
+                    : contentHeight.clamp(compactBodyMinFloor, double.infinity);
+                final footerHeight = footerVisible
+                    ? (panelsHeight - bodyHeight).clamp(0.0, double.infinity)
+                    : 0.0;
+                final hasRealBibleText =
+                    (_selectedBibleText?.isNotEmpty ?? false);
+                final selectedBibleVersion = _selectedBibleVersionOption();
+                final showBibleVersionName = constraints.maxWidth >= 430;
 
-            return Column(
-              children: [
-                SizedBox(
-                  height: headerHeight,
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-                    child: Column(
-                      children: [
-                        Row(
-                          children: [
-                            Text('Verse Catch', style: theme.textTheme.titleLarge),
-                            const Spacer(),
-                            if (kEnableHistoryFeature && hasText)
-                              IconButton(
-                                icon: const Icon(Icons.save_outlined),
-                                tooltip: 'Save to history',
-                                onPressed: _processing ? null : _saveCapture,
+                return Column(
+                  children: [
+                    if (headerVisible)
+                      SizedBox(
+                        height: headerHeight,
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                          child: Column(
+                            children: [
+                              Row(
+                                children: [
+                                  Text(
+                                    'Verse Catch',
+                                    style: theme.textTheme.titleLarge,
+                                  ),
+                                  const Spacer(),
+                                  if (kEnableHistoryFeature && hasText)
+                                    IconButton(
+                                      icon: const Icon(Icons.save_outlined),
+                                      tooltip: 'Save to history',
+                                      onPressed: _processing
+                                          ? null
+                                          : _saveCapture,
+                                    ),
+                                  IconButton(
+                                    key: const ValueKey('reset-button'),
+                                    icon: const Icon(
+                                      Icons.restart_alt_outlined,
+                                    ),
+                                    tooltip: 'Start over',
+                                    onPressed: _resetAll,
+                                  ),
+                                ],
                               ),
-                            IconButton(
-                              key: const ValueKey('reset-button'),
-                              icon: const Icon(Icons.restart_alt_outlined),
-                              tooltip: 'Start over',
-                              onPressed: _resetAll,
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 6),
-                        if (kShowBanner) ...[
-                          const _BannerImage(),
-                          const SizedBox(height: 10),
-                        ],
-                        _SourceSelectorCard(
-                          selected: _inputSource,
-                          processing: _processing,
-                          lastImagePath: _lastImagePath,
-                          compactVertical: constraints.maxHeight < 760,
-                          onSourceChanged: _changeSource,
-                          onPickFile: _pickTextFile,
-                          onPickImage: _pickImage,
-                          onOpenCamera: _openCameraCapture,
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                SizedBox(
-                  height: bodyHeight,
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                'Source text',
-                                style: theme.textTheme.titleMedium,
+                              const SizedBox(height: 6),
+                              if (kShowBanner) ...[
+                                const _BannerImage(),
+                                const SizedBox(height: 10),
+                              ],
+                              _SourceSelectorCard(
+                                selected: _inputSource,
+                                processing: _processing,
+                                lastImagePath: _lastImagePath,
+                                compactVertical: constraints.maxHeight < 760,
+                                cameraSupported: _supportsCameraCapture,
+                                onSourceChanged: _changeSource,
+                                onPickFile: _pickTextFile,
+                                onPickImage: _pickImage,
+                                onOpenCamera: _openCameraCapture,
                               ),
-                            ),
-                            OutlinedButton.icon(
-                              onPressed: canEdit ? _switchToEditMode : null,
-                              icon: const Icon(Icons.edit_outlined, size: 18),
-                              label: const Text('Edit'),
-                            ),
-                            const SizedBox(width: 8),
-                            FilledButton.icon(
-                              key: const ValueKey('done-editing-button'),
-                              onPressed: canDone
-                                  ? () {
-                                      _focusNode.unfocus();
-                                      setState(() => _isEditing = false);
-                                    }
-                                  : null,
-                              icon: const Icon(Icons.check, size: 18),
-                              label: const Text('Done'),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        Expanded(
-                          child: _buildBodyEditor(theme),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                if (footerVisible) ...[
-                  GestureDetector(
-                    onVerticalDragUpdate: (details) {
-                      if (panelsHeight <= 0) return;
-                      setState(() {
-                        final adjusted = _bodyRatio +
-                            (details.delta.dy / panelsHeight).clamp(-0.04, 0.04);
-                        _bodyRatio = adjusted.clamp(0.35, 0.8);
-                      });
-                    },
-                    child: SizedBox(
-                      height: dividerHeight,
-                      child: Center(
-                        child: Container(
-                          width: 72,
-                          height: 3,
-                          decoration: BoxDecoration(
-                            color: theme.colorScheme.outlineVariant,
-                            borderRadius: BorderRadius.circular(999),
+                            ],
                           ),
                         ),
                       ),
+                    SizedBox(
+                      height: bodyHeight,
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Row(
+                                    children: [
+                                      Text(
+                                        'Source text',
+                                        style: theme.textTheme.titleMedium,
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Text(
+                                        '($detectedReferenceCount)',
+                                        style: theme.textTheme.bodySmall
+                                            ?.copyWith(
+                                              color: theme
+                                                  .colorScheme
+                                                  .onSurfaceVariant,
+                                            ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                OutlinedButton.icon(
+                                  onPressed: canEdit ? _switchToEditMode : null,
+                                  icon: const Icon(
+                                    Icons.edit_outlined,
+                                    size: 18,
+                                  ),
+                                  label: const Text('Edit'),
+                                ),
+                                const SizedBox(width: 8),
+                                FilledButton.icon(
+                                  key: const ValueKey('done-editing-button'),
+                                  onPressed: canDone
+                                      ? () {
+                                          _focusNode.unfocus();
+                                          setState(() => _isEditing = false);
+                                        }
+                                      : null,
+                                  icon: const Icon(Icons.check, size: 18),
+                                  label: const Text('Done'),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            Expanded(child: _buildBodyEditor(theme)),
+                          ],
+                        ),
+                      ),
                     ),
-                  ),
-                  SizedBox(
-                    height: footerHeight,
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                           Row(
-                             children: [
-                               Expanded(
-                                 child: Text(
-                                   'Biblical text',
-                                   style: theme.textTheme.titleMedium,
-                                 ),
-                               ),
-                               IconButton.filledTonal(
-                                 key: const ValueKey('copy-bible-text-button'),
-                                 onPressed: _activeReference == null
-                                     ? null
-                                     : _copySelectedBibleText,
-                                 icon: AnimatedSwitcher(
-                                   duration: const Duration(
-                                     milliseconds: 220,
-                                   ),
-                                   child: _copiedFeedbackVisible
-                                       ? const Icon(
-                                           key: ValueKey('copied-icon'),
-                                           Icons.check_circle,
-                                           color: Colors.green,
-                                         )
-                                       : const Icon(
-                                           key: ValueKey('copy-icon'),
-                                           Icons.content_copy_outlined,
-                                         ),
-                                 ),
-                                 tooltip: 'Copy biblical text',
-                               ),
-                             ],
-                           ),
-                           const SizedBox(height: 8),
-                           Expanded(
-                             child: TextField(
-                               key: const ValueKey('biblical-text-field'),
-                               controller: _bibleTextController,
-                               readOnly: true,
-                               expands: true,
-                               maxLines: null,
-                               minLines: null,
-                               textAlignVertical: TextAlignVertical.top,
-                               style: hasRealBibleText
-                                   ? theme.textTheme.bodyMedium
-                                   : theme.textTheme.bodyMedium?.copyWith(
-                                       color: theme.colorScheme.onSurfaceVariant,
-                                     ),
-                               decoration: InputDecoration(
-                                 border: const OutlineInputBorder(),
-                                 labelText: _activeReference ?? 'No reference selected',
-                                 alignLabelWithHint: true,
-                               ),
-                             ),
-                           ),
-                         ],
-                       ),
-                    ),
-                  ),
-                ],
-              ],
-            );
-          },
-        ),
+                    if (footerVisible) ...[
+                      MouseRegion(
+                        cursor: SystemMouseCursors.resizeUpDown,
+                        child: Listener(
+                          onPointerSignal: (event) {
+                            if (event is! PointerScrollEvent) return;
+                            _adjustBodyRatio(
+                              deltaDy: event.scrollDelta.dy,
+                              panelsHeight: panelsHeight,
+                              minBodyRatio: minBodyRatio,
+                              maxBodyRatio: maxBodyRatio,
+                              maxStep: 0.1,
+                              sensitivity: 0.9,
+                            );
+                          },
+                          child: GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onVerticalDragUpdate: (details) {
+                              _adjustBodyRatio(
+                                deltaDy: details.delta.dy,
+                                panelsHeight: panelsHeight,
+                                minBodyRatio: minBodyRatio,
+                                maxBodyRatio: maxBodyRatio,
+                                maxStep: _isDesktopPlatform ? 0.12 : 0.08,
+                                sensitivity: _isDesktopPlatform ? 1.4 : 1.0,
+                              );
+                            },
+                            onDoubleTap: () {
+                              setState(() => _bodyRatio = 0.6);
+                            },
+                            child: SizedBox(
+                              key: const ValueKey('footer-resize-handle'),
+                              height: resizeHandleHeight,
+                              child: Center(
+                                child: Container(
+                                  width: 72,
+                                  height: 3,
+                                  decoration: BoxDecoration(
+                                    color: theme.colorScheme.outlineVariant,
+                                    borderRadius: BorderRadius.circular(999),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      SizedBox(
+                        height: footerHeight,
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Row(
+                                children: [
+                                  if (_activeReference != null) ...[
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      _activeReference!,
+                                      style: theme.textTheme.titleMedium
+                                          ?.copyWith(
+                                            color: _kMagenta,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                    ),
+                                  ],
+                                  const SizedBox(width: 8),
+                                  DropdownButtonHideUnderline(
+                                    child: DropdownButton<int>(
+                                      key: ValueKey(
+                                        'bible-version-selector-$_selectedBibleVersionId',
+                                      ),
+                                      value: _selectedBibleVersionId,
+                                      isDense: true,
+                                      style: theme.textTheme.titleMedium,
+                                      items: kSupportedBibleVersions
+                                          .where((version) => version.enabled)
+                                          .map(
+                                            (version) => DropdownMenuItem<int>(
+                                              value: version.id,
+                                              child: Text(version.code),
+                                            ),
+                                          )
+                                          .toList(growable: false),
+                                      onChanged: _onBibleVersionChanged,
+                                    ),
+                                  ),
+                                  if (showBibleVersionName) ...[
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      '(${selectedBibleVersion.name})',
+                                      style: theme.textTheme.bodySmall
+                                          ?.copyWith(
+                                            color: theme
+                                                .colorScheme
+                                                .onSurfaceVariant,
+                                          ),
+                                    ),
+                                  ],
+                                  const Spacer(),
+                                  IconButton.filledTonal(
+                                    key: const ValueKey(
+                                      'copy-bible-text-button',
+                                    ),
+                                    onPressed: _selectedBibleText == null
+                                        ? null
+                                        : _copySelectedBibleText,
+                                    icon: AnimatedSwitcher(
+                                      duration: const Duration(
+                                        milliseconds: 220,
+                                      ),
+                                      child: _copiedFeedbackVisible
+                                          ? const Icon(
+                                              key: ValueKey('copied-icon'),
+                                              Icons.check_circle,
+                                              color: Colors.green,
+                                            )
+                                          : const Icon(
+                                              key: ValueKey('copy-icon'),
+                                              Icons.content_copy_outlined,
+                                            ),
+                                    ),
+                                    tooltip: 'Copy biblical text',
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              Expanded(
+                                child: TextField(
+                                  key: const ValueKey('biblical-text-field'),
+                                  controller: _bibleTextController,
+                                  readOnly: true,
+                                  expands: true,
+                                  maxLines: null,
+                                  minLines: null,
+                                  textAlignVertical: TextAlignVertical.top,
+                                  style: hasRealBibleText
+                                      ? theme.textTheme.bodyMedium?.copyWith(
+                                          fontStyle: FontStyle.italic,
+                                          fontSize: 18,
+                                          fontFamily: 'Times New Roman',
+                                          fontFamilyFallback: const [
+                                            'Times',
+                                            'Noto Serif',
+                                            'serif',
+                                          ],
+                                        )
+                                      : theme.textTheme.bodyMedium?.copyWith(
+                                          color: theme
+                                              .colorScheme
+                                              .onSurfaceVariant,
+                                        ),
+                                  decoration: InputDecoration(
+                                    border: const OutlineInputBorder(),
+                                    alignLabelWithHint: true,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                );
+              },
+            ),
+          ),
+          if (_loadingBibleText) ...[
+            const ModalBarrier(dismissible: false, color: Color(0x66000000)),
+            const Center(child: CircularProgressIndicator()),
+          ],
+        ],
       ),
     );
   }
@@ -693,50 +1021,45 @@ class _VerseCatchHomePageState extends State<VerseCatchHomePage> {
                   ),
                 )
               : (_verseMatches.isNotEmpty && !_isEditing
-                  ?                   _RichTextViewer(
-                      text: _textController.text,
-                      verseMatches: _verseMatches,
-                      activeReference: _activeReference,
-                      onReferenceTap: _onReferenceTap,
-                    )
-                  : TextField(
-                      key: const ValueKey('source-text-field'),
-                      focusNode: _focusNode,
-                      controller: _textController,
-                      expands: true,
-                      maxLines: null,
-                      minLines: null,
-                      textAlignVertical: TextAlignVertical.top,
-                      decoration: InputDecoration(
-                        hintText: switch (_inputSource) {
-                          InputSource.text => 'Paste or type text here…',
-                          InputSource.image =>
-                            'Pick an image — extracted text will appear here…',
-                          InputSource.camera =>
-                            'Open the camera — captured text will appear here…',
-                        },
-                        border: const OutlineInputBorder(),
-                        suffixIcon: hasText
-                            ? IconButton(
-                                icon: const Icon(Icons.clear),
-                                tooltip: 'Clear text',
-                                onPressed: () => _textController.clear(),
-                              )
-                            : null,
-                      ),
-                    )),
+                    ? _RichTextViewer(
+                        text: _textController.text,
+                        verseMatches: _verseMatches,
+                        activeReference: _activeReference,
+                        onReferenceTap: _onReferenceTap,
+                      )
+                    : TextField(
+                        key: const ValueKey('source-text-field'),
+                        focusNode: _focusNode,
+                        controller: _textController,
+                        expands: true,
+                        maxLines: null,
+                        minLines: null,
+                        textAlignVertical: TextAlignVertical.top,
+                        decoration: InputDecoration(
+                          hintText: switch (_inputSource) {
+                            InputSource.text => 'Paste or type text here…',
+                            InputSource.image =>
+                              'Pick an image — extracted text will appear here…',
+                            InputSource.camera =>
+                              'Open the camera — captured text will appear here…',
+                          },
+                          border: const OutlineInputBorder(),
+                          suffixIcon: hasText
+                              ? IconButton(
+                                  icon: const Icon(Icons.clear),
+                                  tooltip: 'Clear text',
+                                  onPressed: () => _textController.clear(),
+                                )
+                              : null,
+                        ),
+                      )),
         ),
         if (kEnableHistoryFeature) ...[
           const SizedBox(height: 16),
-          Text(
-            'Recent scans',
-            style: theme.textTheme.titleMedium,
-          ),
+          Text('Recent scans', style: theme.textTheme.titleMedium),
           const SizedBox(height: 8),
           if (_history.isEmpty)
-            const _EmptyState(
-              message: 'Your saved history will appear here.',
-            )
+            const _EmptyState(message: 'Your saved history will appear here.')
           else
             ..._history.map(
               (record) => Padding(
@@ -760,6 +1083,7 @@ class _SourceSelectorCard extends StatelessWidget {
     required this.processing,
     required this.lastImagePath,
     required this.compactVertical,
+    required this.cameraSupported,
     required this.onSourceChanged,
     required this.onPickFile,
     required this.onPickImage,
@@ -770,14 +1094,55 @@ class _SourceSelectorCard extends StatelessWidget {
   final bool processing;
   final String? lastImagePath;
   final bool compactVertical;
+  final bool cameraSupported;
   final ValueChanged<InputSource> onSourceChanged;
   final VoidCallback onPickFile;
   final VoidCallback onPickImage;
   final VoidCallback onOpenCamera;
 
+  Future<void> _showImagePreviewDialog(BuildContext context, String imagePath) {
+    return showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return Dialog(
+          insetPadding: const EdgeInsets.all(12),
+          clipBehavior: Clip.antiAlias,
+          child: Stack(
+            children: [
+              Container(
+                color: Colors.black,
+                constraints: const BoxConstraints(minHeight: 240),
+                child: InteractiveViewer(
+                  minScale: 1.0,
+                  maxScale: 5.0,
+                  panEnabled: true,
+                  scaleEnabled: true,
+                  child: Center(
+                    child: Image.file(File(imagePath), fit: BoxFit.contain),
+                  ),
+                ),
+              ),
+              Positioned(
+                top: 8,
+                right: 8,
+                child: IconButton.filledTonal(
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  icon: const Icon(Icons.close),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final effectiveSelected = !cameraSupported && selected == InputSource.camera
+        ? InputSource.image
+        : selected;
     final cardPadding = compactVertical ? 12.0 : 16.0;
     final titleSpacing = compactVertical ? 8.0 : 10.0;
     final controlsSpacing = compactVertical ? 8.0 : 12.0;
@@ -794,7 +1159,8 @@ class _SourceSelectorCard extends StatelessWidget {
               SizedBox(height: titleSpacing),
               LayoutBuilder(
                 builder: (context, constraints) {
-                  final isCompact = constraints.maxWidth < 420 || compactVertical;
+                  final isCompact =
+                      constraints.maxWidth < 420 || compactVertical;
                   return Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -806,7 +1172,9 @@ class _SourceSelectorCard extends StatelessWidget {
                             SegmentedButton<InputSource>(
                               showSelectedIcon: false,
                               style: ButtonStyle(
-                                padding: WidgetStateProperty.resolveWith((states) {
+                                padding: WidgetStateProperty.resolveWith((
+                                  states,
+                                ) {
                                   if (isCompact) {
                                     return const EdgeInsets.symmetric(
                                       horizontal: 8,
@@ -836,22 +1204,24 @@ class _SourceSelectorCard extends StatelessWidget {
                                     overflow: TextOverflow.ellipsis,
                                   ),
                                 ),
-                                ButtonSegment(
-                                  value: InputSource.camera,
-                                  icon: const Icon(Icons.camera_alt_outlined),
-                                  label: Text(
-                                    isCompact ? 'Cam' : 'Camera',
-                                    overflow: TextOverflow.ellipsis,
+                                if (cameraSupported)
+                                  ButtonSegment(
+                                    value: InputSource.camera,
+                                    icon: const Icon(Icons.camera_alt_outlined),
+                                    label: Text(
+                                      isCompact ? 'Cam' : 'Camera',
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
                                   ),
-                                ),
                               ],
-                              selected: {selected},
-                              onSelectionChanged: (s) => onSourceChanged(s.first),
+                              selected: {effectiveSelected},
+                              onSelectionChanged: (s) =>
+                                  onSourceChanged(s.first),
                             ),
                             SizedBox(height: controlsSpacing),
                             SizedBox(
                               width: double.infinity,
-                              child: _buildActions(context),
+                              child: _buildActions(context, effectiveSelected),
                             ),
                           ],
                         ),
@@ -859,7 +1229,11 @@ class _SourceSelectorCard extends StatelessWidget {
                       const SizedBox(width: 12),
                       Expanded(
                         flex: 2,
-                        child: _buildPreview(context, isCompact),
+                        child: _buildPreview(
+                          context,
+                          isCompact,
+                          effectiveSelected,
+                        ),
                       ),
                     ],
                   );
@@ -872,8 +1246,8 @@ class _SourceSelectorCard extends StatelessWidget {
     );
   }
 
-  Widget _buildActions(BuildContext context) {
-    switch (selected) {
+  Widget _buildActions(BuildContext context, InputSource selectedSource) {
+    switch (selectedSource) {
       case InputSource.text:
         return FilledButton.icon(
           onPressed: processing ? null : onPickFile,
@@ -924,20 +1298,26 @@ class _SourceSelectorCard extends StatelessWidget {
     }
   }
 
-  Widget _buildPreview(BuildContext context, bool isCompact) {
+  Widget _buildPreview(
+    BuildContext context,
+    bool isCompact,
+    InputSource selectedSource,
+  ) {
     final theme = Theme.of(context);
     final previewHeight = isCompact ? 112.0 : 140.0;
     final previewIconSize = isCompact ? 30.0 : 36.0;
     final previewPadding = isCompact ? 10.0 : 12.0;
     final previewRadius = isCompact ? 10.0 : 12.0;
 
-    switch (selected) {
+    switch (selectedSource) {
       case InputSource.text:
         return Container(
           height: previewHeight,
           padding: EdgeInsets.all(previewPadding),
           decoration: BoxDecoration(
-            color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+            color: theme.colorScheme.surfaceContainerHighest.withValues(
+              alpha: 0.35,
+            ),
             borderRadius: BorderRadius.circular(previewRadius),
             border: Border.all(color: theme.colorScheme.outlineVariant),
           ),
@@ -963,13 +1343,20 @@ class _SourceSelectorCard extends StatelessWidget {
       case InputSource.image:
       case InputSource.camera:
         if (lastImagePath != null && File(lastImagePath!).existsSync()) {
-          return ClipRRect(
-            borderRadius: BorderRadius.circular(previewRadius),
-            child: Image.file(
-              File(lastImagePath!),
-              height: previewHeight,
-              width: double.infinity,
-              fit: BoxFit.cover,
+          return Material(
+            color: Colors.transparent,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(previewRadius),
+              onTap: () => _showImagePreviewDialog(context, lastImagePath!),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(previewRadius),
+                child: Image.file(
+                  File(lastImagePath!),
+                  height: previewHeight,
+                  width: double.infinity,
+                  fit: BoxFit.cover,
+                ),
+              ),
             ),
           );
         }
@@ -978,7 +1365,9 @@ class _SourceSelectorCard extends StatelessWidget {
           height: previewHeight,
           padding: EdgeInsets.all(previewPadding),
           decoration: BoxDecoration(
-            color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+            color: theme.colorScheme.surfaceContainerHighest.withValues(
+              alpha: 0.35,
+            ),
             borderRadius: BorderRadius.circular(previewRadius),
             border: Border.all(color: theme.colorScheme.outlineVariant),
           ),
@@ -992,7 +1381,9 @@ class _SourceSelectorCard extends StatelessWidget {
               ),
               const SizedBox(height: 8),
               Text(
-                selected == InputSource.camera ? 'No photo yet' : 'No image yet',
+                selectedSource == InputSource.camera
+                    ? 'No photo yet'
+                    : 'No image yet',
                 style: theme.textTheme.titleSmall,
                 textAlign: TextAlign.center,
               ),
@@ -1108,9 +1499,9 @@ class _CameraCapturePageState extends State<CameraCapturePage> {
     } catch (e) {
       if (mounted) {
         setState(() => _capturing = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Capture failed: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Capture failed: $e')));
       }
     }
   }
@@ -1127,53 +1518,52 @@ class _CameraCapturePageState extends State<CameraCapturePage> {
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
-              ? Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Text(
-                      _error!,
-                      style: const TextStyle(color: Colors.white),
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-                )
-              : Column(
-                  children: [
-                    Expanded(child: CameraPreview(_controller!)),
-                    Container(
-                      color: Colors.black,
-                      padding: const EdgeInsets.symmetric(vertical: 28),
-                      child: Center(
-                        child: GestureDetector(
-                          onTap: _capturing ? null : _capture,
-                          child: Container(
-                            width: 72,
-                            height: 72,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: Colors.white.withValues(alpha: 0.15),
-                              border:
-                                  Border.all(color: Colors.white, width: 3),
-                            ),
-                            child: _capturing
-                                ? const Padding(
-                                    padding: EdgeInsets.all(18),
-                                    child: CircularProgressIndicator(
-                                      color: Colors.white,
-                                      strokeWidth: 2,
-                                    ),
-                                  )
-                                : const Icon(
-                                    Icons.camera,
-                                    color: Colors.white,
-                                    size: 36,
-                                  ),
-                          ),
+          ? Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text(
+                  _error!,
+                  style: const TextStyle(color: Colors.white),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            )
+          : Column(
+              children: [
+                Expanded(child: CameraPreview(_controller!)),
+                Container(
+                  color: Colors.black,
+                  padding: const EdgeInsets.symmetric(vertical: 28),
+                  child: Center(
+                    child: GestureDetector(
+                      onTap: _capturing ? null : _capture,
+                      child: Container(
+                        width: 72,
+                        height: 72,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: Colors.white.withValues(alpha: 0.15),
+                          border: Border.all(color: Colors.white, width: 3),
                         ),
+                        child: _capturing
+                            ? const Padding(
+                                padding: EdgeInsets.all(18),
+                                child: CircularProgressIndicator(
+                                  color: Colors.white,
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Icon(
+                                Icons.camera,
+                                color: Colors.white,
+                                size: 36,
+                              ),
                       ),
                     ),
-                  ],
+                  ),
                 ),
+              ],
+            ),
     );
   }
 }
@@ -1228,7 +1618,8 @@ class _RichTextViewer extends StatelessWidget {
     );
 
     final spans = <InlineSpan>[];
-    final sorted = [...verseMatches]..sort((a, b) => a.start.compareTo(b.start));
+    final sorted = [...verseMatches]
+      ..sort((a, b) => a.start.compareTo(b.start));
     var pos = 0;
 
     for (final vm in sorted) {
@@ -1376,6 +1767,20 @@ class CaptureRecord {
   }
 }
 
+class BibleVersionOption {
+  const BibleVersionOption({
+    required this.id,
+    required this.code,
+    required this.name,
+    this.enabled = true,
+  });
+
+  final int id;
+  final String code;
+  final String name;
+  final bool enabled;
+}
+
 class VerseCaptureStore {
   VerseCaptureStore._();
 
@@ -1393,17 +1798,15 @@ class VerseCaptureStore {
     final databasePath = p.join(directory.path, 'versecatch.db');
     final database = await openDatabase(
       databasePath,
-      version: 1,
+      version: 2,
       onCreate: (db, version) async {
-        await db.execute('''
-          CREATE TABLE captures (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            created_at TEXT NOT NULL,
-            image_path TEXT NOT NULL,
-            recognized_text TEXT NOT NULL,
-            references_json TEXT NOT NULL
-          )
-        ''');
+        await db.execute(_kCreateCapturesTableSql);
+        await db.execute(_kCreateSettingsTableSql);
+      },
+      onUpgrade: (db, oldVersion, newVersion) async {
+        if (oldVersion < 2) {
+          await db.execute(_kCreateSettingsTableSql);
+        }
       },
     );
 
@@ -1429,7 +1832,49 @@ class VerseCaptureStore {
     );
     return rows.map(CaptureRecord.fromMap).toList(growable: false);
   }
+
+  Future<int?> selectedBibleVersionId() async {
+    final db = await _db;
+    final rows = await db.query(
+      'app_settings',
+      columns: const ['value'],
+      where: 'key = ?',
+      whereArgs: const [_kBibleVersionSettingKey],
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    final value = rows.first['value'] as String?;
+    if (value == null) return null;
+    return int.tryParse(value);
+  }
+
+  Future<void> setSelectedBibleVersionId(int versionId) async {
+    final db = await _db;
+    await db.insert('app_settings', <String, Object?>{
+      'key': _kBibleVersionSettingKey,
+      'value': versionId.toString(),
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
 }
+
+const String _kCreateCapturesTableSql = '''
+  CREATE TABLE captures (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    created_at TEXT NOT NULL,
+    image_path TEXT NOT NULL,
+    recognized_text TEXT NOT NULL,
+    references_json TEXT NOT NULL
+  )
+''';
+
+const String _kCreateSettingsTableSql = '''
+  CREATE TABLE IF NOT EXISTS app_settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+  )
+''';
+
+const String _kBibleVersionSettingKey = 'selected_bible_version_id';
 
 List<String> extractVerseReferences(String text) {
   final normalized = text.replaceAll(RegExp(r'\s+'), ' ').trim();
@@ -1472,6 +1917,17 @@ List<String> extractVerseReferences(String text) {
     }
   }
 
+  for (final match in _kChapterOnlyPattern.allMatches(normalized)) {
+    final book = match.group(1)!;
+    final chapter = match.group(2)!;
+    if (!_isKnownBiblicalBook(book)) {
+      continue;
+    }
+    references.add(
+      _normalizeChapterOnlyReference(book: book, chapterOrVerse: chapter),
+    );
+  }
+
   return references.toList(growable: false);
 }
 
@@ -1479,19 +1935,168 @@ List<String> extractVerseReferences(String text) {
 // Biblical text lookup
 // ---------------------------------------------------------------------------
 
-String? lookupBibleText(String reference) {
+Future<String?> lookupBibleTextFromYouVersion(
+  String reference,
+  int bibleVersionId,
+) async {
+  if (kYouVersionAppKey.isEmpty) {
+    throw const YouVersionConfigurationException(
+      'Missing YOUVERSION_APP_KEY. Run with '
+      '--dart-define=YOUVERSION_APP_KEY=<your_app_key>.',
+    );
+  }
+
   final match = RegExp(
-    r'^(.*)\s+(\d{1,3})\s*:\s*(\d{1,3})(?:\s*-\s*(\d{1,3}))?$',
+    r'^(.*)\s+(\d{1,3})(?:(?:\s*:\s*|\s*\.\s*|\s*,\s*|\s+)(\d{1,3})(?:\s*-\s*(\d{1,3}))?)?$',
   ).firstMatch(reference.trim());
   if (match == null) return null;
 
   final book = _canonicalBookKey(match.group(1)!);
-  final chapter = match.group(2)!;
-  final verse = match.group(3)!;
+  final usfmBook =
+      _kUsfmBookCodeByBookKey[book] ??
+      _kUsfmBookCodeByBookKey[_normalizeBookKey(match.group(1)!)];
+  if (usfmBook == null) {
+    throw YouVersionApiException(
+      'Unsupported biblical book for remote lookup: ${match.group(1)}',
+    );
+  }
+  var chapter = match.group(2)!;
+  var verse = match.group(3);
   final verseEnd = match.group(4);
-  final suffix = verseEnd == null ? '$chapter:$verse' : '$chapter:$verse-$verseEnd';
-  final key = '$book:$suffix'.toLowerCase();
-  return _kBibleTextByReference[key];
+  if (verse == null &&
+      _kSingleChapterBookKeys.contains(book) &&
+      int.parse(chapter) > 1) {
+    verse = chapter;
+    chapter = '1';
+  }
+  if (verse == null) {
+    return _fetchChapterContentByVerses(
+      bibleVersionId: bibleVersionId,
+      usfmBook: usfmBook,
+      chapter: chapter,
+    );
+  }
+
+  final passageId = verseEnd == null
+      ? '$usfmBook.$chapter.$verse'
+      : '$usfmBook.$chapter.$verse-$verseEnd';
+  if (verseEnd == null) {
+    final content = await _fetchYouVersionPassageContent(
+      bibleVersionId: bibleVersionId,
+      passageId: passageId,
+    );
+    return formatBibleTextForDisplay(content: content);
+  }
+
+  final startVerseNumber = int.parse(verse);
+  final endVerseNumber = int.parse(verseEnd);
+  if (endVerseNumber < startVerseNumber) {
+    throw YouVersionApiException('Invalid verse range: $reference');
+  }
+
+  final formattedLines = <String>[];
+  for (
+    var verseNumber = startVerseNumber;
+    verseNumber <= endVerseNumber;
+    verseNumber++
+  ) {
+    final singleVersePassageId = '$usfmBook.$chapter.$verseNumber';
+    final content = await _fetchYouVersionPassageContent(
+      bibleVersionId: bibleVersionId,
+      passageId: singleVersePassageId,
+    );
+    final normalizedText = formatBibleTextForDisplay(content: content);
+    final formatted = normalizedText == null
+        ? null
+        : '$verseNumber: $normalizedText';
+    if (formatted != null && formatted.isNotEmpty) {
+      formattedLines.add(formatted);
+    }
+  }
+
+  if (formattedLines.isEmpty) return null;
+  return formattedLines.join('\n');
+}
+
+Future<String> _fetchYouVersionPassageContent({
+  required int bibleVersionId,
+  required String passageId,
+}) async {
+  final baseUri = Uri.parse(kYouVersionApiBaseUrl);
+  final requestUri = baseUri.replace(
+    path: _joinApiPath(
+      baseUri.path,
+      '/v1/bibles/$bibleVersionId/passages/$passageId',
+    ),
+  );
+
+  final client = HttpClient();
+  try {
+    final request = await client.getUrl(requestUri);
+    request.headers.set('x-yvp-app-key', kYouVersionAppKey);
+    request.headers.set(HttpHeaders.acceptHeader, 'application/json');
+    final response = await request.close();
+    final responseBody = await utf8.decoder.bind(response).join();
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw YouVersionApiException(
+        'YouVersion API returned HTTP ${response.statusCode}: $responseBody',
+        statusCode: response.statusCode,
+        responseBody: responseBody,
+        passageId: passageId,
+      );
+    }
+
+    final decoded = jsonDecode(responseBody);
+    final extractedText = _extractBibleTextFromPayload(decoded);
+    if (extractedText == null || extractedText.isEmpty) {
+      throw const FormatException(
+        'No biblical text found in YouVersion response payload.',
+      );
+    }
+    return extractedText;
+  } finally {
+    client.close(force: true);
+  }
+}
+
+Future<String?> _fetchChapterContentByVerses({
+  required int bibleVersionId,
+  required String usfmBook,
+  required String chapter,
+}) async {
+  const maxVerseProbe = 200;
+  final formattedLines = <String>[];
+  for (var verseNumber = 1; verseNumber <= maxVerseProbe; verseNumber++) {
+    final passageId = '$usfmBook.$chapter.$verseNumber';
+    try {
+      final content = await _fetchYouVersionPassageContent(
+        bibleVersionId: bibleVersionId,
+        passageId: passageId,
+      );
+      final normalizedText = formatBibleTextForDisplay(content: content);
+      if (normalizedText != null && normalizedText.isNotEmpty) {
+        formattedLines.add('$verseNumber: $normalizedText');
+      }
+    } on YouVersionApiException catch (error) {
+      if (error.statusCode != 404) rethrow;
+      if (verseNumber == 1) {
+        throw YouVersionApiException(
+          'Bible passage $usfmBook.$chapter for version $bibleVersionId not found',
+          statusCode: 404,
+          passageId: '$usfmBook.$chapter',
+        );
+      }
+      break;
+    }
+  }
+  if (formattedLines.isEmpty) return null;
+  return formattedLines.join('\n');
+}
+
+String? formatBibleTextForDisplay({required String content}) {
+  final normalizedContent = _stripHtml(content).trim();
+  if (normalizedContent.isEmpty) return null;
+  return normalizedContent;
 }
 
 String _normalizeBookKey(String book) {
@@ -1523,6 +2128,8 @@ String _canonicalBookKey(String book) {
       return 'philippians';
     case 'psalm':
     case 'psalms':
+    case 'salmos':
+    case 'sal':
     case 'ps':
       return 'psalm';
     case 'proverbs':
@@ -1545,9 +2152,21 @@ String _canonicalBookKey(String book) {
     case 'efe':
     case 'efesios':
       return 'ephesians';
+    case 'judas':
     default:
       return normalized;
   }
+}
+
+String _normalizeChapterOnlyReference({
+  required String book,
+  required String chapterOrVerse,
+}) {
+  final canonicalBook = _canonicalBookKey(book);
+  if (_kSingleChapterBookKeys.contains(canonicalBook)) {
+    return '$book 1:$chapterOrVerse';
+  }
+  return '$book $chapterOrVerse';
 }
 
 const Set<String> _kKnownBibleBooks = {
@@ -1588,6 +2207,8 @@ const Set<String> _kKnownBibleBooks = {
   'job',
   'psalm',
   'psalms',
+  'salmos',
+  'sal',
   'ps',
   'proverbs',
   'prov',
@@ -1690,30 +2311,246 @@ const Set<String> _kKnownBibleBooks = {
   '3jn',
   'jude',
   'jud',
+  'judas',
   'revelation',
   'rev',
 };
 
-const _kBibleTextByReference = <String, String>{
-  'john:3:16': 'For God so loved the world that he gave his one and only Son, '
-      'that whoever believes in him shall not perish but have eternal life.',
-  'romans:8:28': 'And we know that in all things God works for the good of '
-      'those who love him, who have been called according to his purpose.',
-  '1cor:13:4-7': 'Love is patient, love is kind. It does not envy, it does '
-      'not boast, it is not proud. It does not dishonor others, it is not self-seeking, '
-      'it is not easily angered, it keeps no record of wrongs. Love does not delight in evil '
-      'but rejoices with the truth. It always protects, always trusts, always hopes, always perseveres.',
-  'philippians:4:13': 'I can do all this through him who gives me strength.',
-  'ephesians:3:3': 'By revelation, the mystery was made known to me.',
-  'psalm:23:1': 'The Lord is my shepherd; I shall not want.',
-  'proverbs:3:5-6': 'Trust in the Lord with all your heart and lean not on your own understanding; '
-      'in all your ways submit to him, and he will make your paths straight.',
-  'jeremiah:29:11': 'For I know the plans I have for you, declares the Lord, plans for welfare '
-      'and not for evil, to give you a future and a hope.',
-  'isaiah:40:31': 'But those who hope in the Lord will renew their strength. They will soar on wings like eagles.',
-  'joshua:1:9': 'Have I not commanded you? Be strong and courageous. Do not be afraid; do not be discouraged, for the Lord your God will be with you wherever you go.',
-  'matthew:5:16': 'Let your light shine before others, that they may see your good deeds and glorify your Father in heaven.',
+const _kUsfmBookCodeByBookKey = <String, String>{
+  'genesis': 'GEN',
+  'gen': 'GEN',
+  'exodus': 'EXO',
+  'exo': 'EXO',
+  'leviticus': 'LEV',
+  'lev': 'LEV',
+  'numbers': 'NUM',
+  'num': 'NUM',
+  'deuteronomy': 'DEU',
+  'deut': 'DEU',
+  'joshua': 'JOS',
+  'josh': 'JOS',
+  'judges': 'JDG',
+  'judg': 'JDG',
+  'ruth': 'RUT',
+  'rut': 'RUT',
+  '1samuel': '1SA',
+  '1sam': '1SA',
+  '2samuel': '2SA',
+  '2sam': '2SA',
+  '1kings': '1KI',
+  '1kng': '1KI',
+  '2kings': '2KI',
+  '2kng': '2KI',
+  '1chronicles': '1CH',
+  '1chr': '1CH',
+  '2chronicles': '2CH',
+  '2chr': '2CH',
+  'ezra': 'EZR',
+  'ezr': 'EZR',
+  'nehemiah': 'NEH',
+  'neh': 'NEH',
+  'esther': 'EST',
+  'est': 'EST',
+  'job': 'JOB',
+  'psalm': 'PSA',
+  'psalms': 'PSA',
+  'salmos': 'PSA',
+  'sal': 'PSA',
+  'ps': 'PSA',
+  'proverbs': 'PRO',
+  'prov': 'PRO',
+  'ecclesiastes': 'ECC',
+  'eccl': 'ECC',
+  'songofsolomon': 'SNG',
+  'song': 'SNG',
+  'isaiah': 'ISA',
+  'isa': 'ISA',
+  'jeremiah': 'JER',
+  'jer': 'JER',
+  'lamentations': 'LAM',
+  'lam': 'LAM',
+  'ezekiel': 'EZK',
+  'ezek': 'EZK',
+  'daniel': 'DAN',
+  'dan': 'DAN',
+  'hosea': 'HOS',
+  'hos': 'HOS',
+  'joel': 'JOL',
+  'jol': 'JOL',
+  'amos': 'AMO',
+  'am': 'AMO',
+  'obadiah': 'OBA',
+  'obad': 'OBA',
+  'jonah': 'JON',
+  'jon': 'JON',
+  'micah': 'MIC',
+  'mic': 'MIC',
+  'nahum': 'NAM',
+  'nah': 'NAM',
+  'habakkuk': 'HAB',
+  'hab': 'HAB',
+  'zephaniah': 'ZEP',
+  'zep': 'ZEP',
+  'haggai': 'HAG',
+  'hag': 'HAG',
+  'zechariah': 'ZEC',
+  'zech': 'ZEC',
+  'malachi': 'MAL',
+  'mal': 'MAL',
+  'matthew': 'MAT',
+  'matt': 'MAT',
+  'mark': 'MRK',
+  'mrk': 'MRK',
+  'mt': 'MAT',
+  'luke': 'LUK',
+  'luk': 'LUK',
+  'lc': 'LUK',
+  'john': 'JHN',
+  'jhn': 'JHN',
+  'acts': 'ACT',
+  'hch': 'ACT',
+  'romans': 'ROM',
+  'rom': 'ROM',
+  '1cor': '1CO',
+  '1corinthians': '1CO',
+  '2cor': '2CO',
+  '2corinthians': '2CO',
+  'galatians': 'GAL',
+  'gal': 'GAL',
+  'ephesians': 'EPH',
+  'eph': 'EPH',
+  'efe': 'EPH',
+  'efesios': 'EPH',
+  'philippians': 'PHP',
+  'phil': 'PHP',
+  'colossians': 'COL',
+  'col': 'COL',
+  '1thessalonians': '1TH',
+  '1thes': '1TH',
+  '1tes': '1TH',
+  '2thessalonians': '2TH',
+  '2thes': '2TH',
+  '2tes': '2TH',
+  '1timothy': '1TI',
+  '1tim': '1TI',
+  '2timothy': '2TI',
+  '2tim': '2TI',
+  'titus': 'TIT',
+  'tit': 'TIT',
+  'philemon': 'PHM',
+  'phm': 'PHM',
+  'hebrews': 'HEB',
+  'heb': 'HEB',
+  'james': 'JAS',
+  'jam': 'JAS',
+  '1peter': '1PE',
+  '1pet': '1PE',
+  '2peter': '2PE',
+  '2pet': '2PE',
+  '1john': '1JN',
+  '1jn': '1JN',
+  '2john': '2JN',
+  '2jn': '2JN',
+  '3john': '3JN',
+  '3jn': '3JN',
+  'jude': 'JUD',
+  'jud': 'JUD',
+  'judas': 'JUD',
+  'revelation': 'REV',
+  'rev': 'REV',
 };
+
+const Set<String> _kSingleChapterBookKeys = {
+  'obadiah',
+  'obad',
+  'philemon',
+  'phm',
+  '2john',
+  '2jn',
+  '3john',
+  '3jn',
+  'jude',
+  'jud',
+  'judas',
+};
+
+String _joinApiPath(String basePath, String suffix) {
+  final normalizedBase = basePath.endsWith('/')
+      ? basePath.substring(0, basePath.length - 1)
+      : basePath;
+  final normalizedSuffix = suffix.startsWith('/') ? suffix : '/$suffix';
+  if (normalizedBase.isEmpty) return normalizedSuffix;
+  return '$normalizedBase$normalizedSuffix';
+}
+
+String? _extractBibleTextFromPayload(Object? payload) {
+  final directText = _extractTextCandidate(payload);
+  if (directText != null) return directText;
+
+  if (payload is Map<String, dynamic>) {
+    for (final key in ['data', 'passage', 'content', 'items', 'results']) {
+      final nested = _extractBibleTextFromPayload(payload[key]);
+      if (nested != null) return nested;
+    }
+  }
+
+  if (payload is List) {
+    for (final value in payload) {
+      final nested = _extractBibleTextFromPayload(value);
+      if (nested != null) return nested;
+    }
+  }
+
+  return null;
+}
+
+String? _extractTextCandidate(Object? payload) {
+  if (payload is String) {
+    final normalized = _stripHtml(payload).trim();
+    return normalized.isEmpty ? null : normalized;
+  }
+
+  if (payload is! Map<String, dynamic>) return null;
+
+  for (final key in ['plain_text', 'text', 'body', 'content']) {
+    final value = payload[key];
+    if (value is String) {
+      final normalized = _stripHtml(value).trim();
+      if (normalized.isNotEmpty) return normalized;
+    }
+  }
+  return null;
+}
+
+String _stripHtml(String value) {
+  return value
+      .replaceAll(RegExp(r'<[^>]*>'), ' ')
+      .replaceAll('&nbsp;', ' ')
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
+}
+
+class YouVersionConfigurationException implements Exception {
+  const YouVersionConfigurationException(this.message);
+  final String message;
+  @override
+  String toString() => message;
+}
+
+class YouVersionApiException implements Exception {
+  const YouVersionApiException(
+    this.message, {
+    this.statusCode,
+    this.responseBody,
+    this.passageId,
+  });
+  final String message;
+  final int? statusCode;
+  final String? responseBody;
+  final String? passageId;
+  @override
+  String toString() => message;
+}
 
 // ---------------------------------------------------------------------------
 // Colors
@@ -1804,6 +2641,10 @@ final _kContinuationPattern = RegExp(
   r'^\s*[,;]\s*(\d{1,3})\s*(?::|\.|,|\s)\s*(\d{1,3})(?:\s*-\s*(\d{1,3}))?',
 );
 
+final _kChapterOnlyPattern = RegExp(
+  r'\b((?:[1-3]\s+)?[A-Za-zÁÉÍÓÚáéíóúÑñ]+\.?)\s+(\d{1,3})\b(?!\s*(?::|\.|,)\s*\d)(?!\s+\d)',
+);
+
 // ---------------------------------------------------------------------------
 // extractVerseMatches — returns references WITH their positions in [text]
 // ---------------------------------------------------------------------------
@@ -1825,7 +2666,8 @@ List<VerseMatch> extractVerseMatches(String text) {
 
     matches.add(
       VerseMatch(
-        reference: '$book $chapter:$verse${verseEnd == null ? '' : '-$verseEnd'}',
+        reference:
+            '$book $chapter:$verse${verseEnd == null ? '' : '-$verseEnd'}',
         start: match.start,
         end: match.end,
       ),
@@ -1848,6 +2690,24 @@ List<VerseMatch> extractVerseMatches(String text) {
       );
       cursor += cont.end;
     }
+  }
+
+  for (final match in _kChapterOnlyPattern.allMatches(text)) {
+    final book = match.group(1)!;
+    final chapter = match.group(2)!;
+    if (!_isKnownBiblicalBook(book)) {
+      continue;
+    }
+    matches.add(
+      VerseMatch(
+        reference: _normalizeChapterOnlyReference(
+          book: book,
+          chapterOrVerse: chapter,
+        ),
+        start: match.start,
+        end: match.end,
+      ),
+    );
   }
 
   return matches;
