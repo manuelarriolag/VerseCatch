@@ -1,4 +1,4 @@
-package com.versecatch.versecatch
+package com.manuelarriolag.versecatch
 
 import io.flutter.embedding.android.FlutterActivity
 

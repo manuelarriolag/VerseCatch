@@ -1,14 +1,45 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:versecatch/main.dart';
 
+// Helper: enter text and then unfocus to switch to the _RichTextViewer.
+Future<void> _enterTextAndUnfocus(WidgetTester tester, String text) async {
+  await tester.enterText(
+    find.byKey(const ValueKey('source-text-field')),
+    text,
+  );
+  await tester.pumpAndSettle();
+  FocusManager.instance.primaryFocus?.unfocus();
+  await tester.pumpAndSettle();
+}
+
 void main() {
   testWidgets('shows the VerseCatch home screen', (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
     await tester.pumpWidget(const VerseCatchApp());
     await tester.pumpAndSettle();
 
-    expect(find.text('VerseCatch'), findsOneWidget);
+    expect(find.text('Verse Catch'), findsOneWidget);
+  });
+
+  testWidgets('hides history UI when the history feature flag is off',
+      (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(const VerseCatchApp());
+    await tester.pumpAndSettle();
+
+    expect(find.text('Recent scans'), findsNothing);
+    expect(find.byTooltip('Save to history'), findsNothing);
   });
 
   testWidgets('shows the source selector and text field',
@@ -41,7 +72,91 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    // While editing, the reference appears inside the text field.
     expect(find.text('John 3:16'), findsWidgets);
+  });
+
+  testWidgets(
+      'switches to rich text viewer with inline tappable reference on unfocus',
+      (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(const VerseCatchApp());
+    await tester.pumpAndSettle();
+
+    await _enterTextAndUnfocus(tester, 'John 3:16');
+
+    // TextField is replaced by the rich viewer.
+    expect(find.byKey(const ValueKey('source-text-field')), findsNothing);
+    // The inline tappable reference widget is present.
+    expect(find.byKey(const ValueKey('ref-chip-John 3:16')), findsOneWidget);
+    // The inline edit affordance is no longer shown.
+    expect(find.text('Tap to edit'), findsNothing);
+  });
+
+  testWidgets('shows biblical text when an inline reference is tapped',
+      (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(const VerseCatchApp());
+    await tester.pumpAndSettle();
+
+    await _enterTextAndUnfocus(tester, 'John 3:16');
+
+    await tester.tap(find.byKey(const ValueKey('ref-chip-John 3:16')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Biblical text'), findsOneWidget);
+    expect(find.textContaining('For God so loved the world'), findsOneWidget);
+  });
+
+  testWidgets('copies the selected biblical text and shows feedback',
+      (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(SystemChannels.platform, (methodCall) async {
+      if (methodCall.method == 'Clipboard.setData') {
+        return null;
+      }
+      return null;
+    });
+    addTearDown(() => TestDefaultBinaryMessengerBinding.instance
+        .defaultBinaryMessenger
+        .setMockMethodCallHandler(SystemChannels.platform, null));
+
+    await tester.pumpWidget(const VerseCatchApp());
+    await tester.pumpAndSettle();
+
+    await _enterTextAndUnfocus(tester, 'John 3:16');
+
+    await tester.tap(find.byKey(const ValueKey('ref-chip-John 3:16')));
+    await tester.pumpAndSettle();
+
+    // Scroll the bottom ListView until the copy button is visible.
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('copy-bible-text-button')),
+      100,
+      scrollable: find.byType(Scrollable).last,
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('copy-bible-text-button')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    expect(find.byKey(const ValueKey('copied-icon')), findsOneWidget);
+
+    await tester.pump(const Duration(milliseconds: 1500));
+    await tester.pump();
   });
 
   test('extractVerseReferences finds scripture references', () {
@@ -69,5 +184,13 @@ void main() {
         '1 Tes 2:1',
       ]),
     );
+  });
+
+  test('extractVerseReferences ignores leading noise before a valid book', () {
+    expect(extractVerseReferences('principal Efe 3:3'), contains('Efe 3:3'));
+    expect(extractVerseReferences('principal Efe 3:3'), isNot(contains('principal Efe 3:3')));
+
+    expect(extractVerseReferences('principal. Efe 3:3'), contains('Efe 3:3'));
+    expect(extractVerseReferences('principal. Efe 3:3'), isNot(contains('principal. Efe 3:3')));
   });
 }
