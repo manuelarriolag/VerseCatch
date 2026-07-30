@@ -145,19 +145,19 @@ flutter build macos --release --dart-define-from-file=env.release.json
 
 Artefacto generado:
 
-- `build/macos/Build/Products/Release/VerseCatch.app`
+- `build/macos/Build/Products/Release/Verse Catch.app `
 
 Ejecutar app compilada:
 
 ```bash
-open build/macos/Build/Products/Release/VerseCatch.app
+open "build/macos/Build/Products/Release/Verse Catch.app" 
 ```
 
 Copiar app en /Applications:
 
 ```bash
-cp -R build/macos/Build/Products/Release/versecatch.app /Applications/
-open /Applications/versecatch.app
+cp -R "build/macos/Build/Products/Release/Verse Catch.app" /Applications/
+open "/Applications/Verse Catch.app"
 ```
 
 ### Android (APK)
@@ -247,8 +247,8 @@ cd ..
 
 ## Resumen rápido de artefactos
 ### macOS app:
-build/macos/Build/Products/Release/VerseCatch.app
-Ejecutar: open build/macos/Build/Products/Release/VerseCatch.app
+build/macos/Build/Products/Release/Verse Catch.app 
+Ejecutar: open build/macos/Build/Products/Release/Verse Catch.app 
 
 ### Android APK:
 build/app/outputs/flutter-apk/app-release.apk

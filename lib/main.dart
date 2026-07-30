@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:camera/camera.dart';
 import 'package:file_picker/file_picker.dart';
@@ -20,9 +22,17 @@ typedef BibleTextLookup =
 
 const bool kEnableHistoryFeature = false;
 const bool kShowBanner = false;
+const String kAppTitle = 'Verse Catch';
+const String kAppVersionLabel = 'v1.0';
 const String kNoBibleTextMessage =
-    'Select a highlighted reference to view biblical text.';
+    'Select a highlighted biblical citation to view biblical text.';
 const String kLoadingBibleTextMessage = 'Loading biblical text...';
+const String kIncludeBibleTextSettingKey = 'include_bible_text_in_output';
+const String kExportDirectorySettingKey = 'export_directory_path';
+const String kAppEnvironment = String.fromEnvironment(
+  'APP_ENV',
+  defaultValue: 'development',
+);
 const String kYouVersionApiBaseUrl = String.fromEnvironment(
   'YOUVERSION_API_BASE_URL',
   defaultValue: 'https://api.youversion.com',
@@ -67,6 +77,153 @@ Future<void> main() async {
   runApp(const VerseCatchApp());
 }
 
+String buildProcessingStatusLabel({
+  required int current,
+  required int total,
+  required bool completed,
+  required Duration elapsed,
+}) {
+  if (completed) {
+    if (elapsed.inMinutes > 0) {
+      final minutes = elapsed.inMinutes;
+      final seconds = elapsed.inSeconds % 60;
+      return seconds == 0
+          ? 'Completado en ${minutes}m'
+          : 'Completado en ${minutes}m ${seconds}s';
+    }
+    return 'Completado en ${elapsed.inSeconds}s';
+  }
+  if (total <= 1) {
+    return 'Procesando…';
+  }
+  return '$current de $total';
+}
+
+String buildOutputContent({
+  required String sourceText,
+  required List<({String reference, int count})> groupedRefs,
+  required bool includeBibleText,
+  required Map<String, String> biblicalTexts,
+  required String versionLabel,
+}) {
+  final buffer = StringBuffer();
+  buffer.writeln('Texto escaneado');
+  buffer.writeln();
+  final trimmedSource = sourceText.trim();
+  if (trimmedSource.isNotEmpty) {
+    buffer.writeln(trimmedSource);
+  } else {
+    buffer.writeln('(Sin texto)');
+  }
+  buffer.writeln();
+
+  if (groupedRefs.isEmpty) {
+    buffer.writeln('No se encontraron citas bíblicas.');
+    return buffer.toString().trimRight();
+  }
+
+  buffer.writeln('Citas bíblicas encontradas');
+  buffer.writeln();
+  for (final groupedRef in groupedRefs) {
+    final reference = groupedRef.reference;
+    final suffix = groupedRef.count > 1 ? ' (${groupedRef.count} veces)' : '';
+    buffer.writeln('- $reference$suffix');
+    if (!includeBibleText) {
+      buffer.writeln();
+      continue;
+    }
+    final bibleText = biblicalTexts[reference]?.trim();
+    if (bibleText == null || bibleText.isEmpty) {
+      buffer.writeln();
+      continue;
+    }
+    buffer.writeln();
+    buffer.writeln('  $versionLabel');
+    buffer.writeln('  "$bibleText"');
+    buffer.writeln();
+  }
+
+  return buffer.toString().trimRight();
+}
+
+String buildCitationsClipboardContent({
+  required List<({String reference, int count})> groupedRefs,
+  required bool includeBibleText,
+  required Map<String, String> biblicalTexts,
+  required String versionLabel,
+}) {
+  final buffer = StringBuffer();
+  buffer.writeln('Citas bíblicas encontradas');
+  buffer.writeln();
+
+  if (groupedRefs.isEmpty) {
+    buffer.writeln('(Sin citas bíblicas encontradas)');
+    return buffer.toString().trimRight();
+  }
+
+  for (final groupedRef in groupedRefs) {
+    final reference = groupedRef.reference;
+    final suffix = groupedRef.count > 1 ? ' (${groupedRef.count} veces)' : '';
+    buffer.writeln('- $reference$suffix');
+    if (!includeBibleText) {
+      buffer.writeln();
+      continue;
+    }
+    final bibleText = biblicalTexts[reference]?.trim();
+    if (bibleText == null || bibleText.isEmpty) {
+      buffer.writeln();
+      continue;
+    }
+    buffer.writeln();
+    buffer.writeln('  $versionLabel');
+    buffer.writeln('  "$bibleText"');
+    buffer.writeln();
+  }
+
+  return buffer.toString().trimRight();
+}
+
+String buildScannedResultClipboardContent({
+  required String sourceText,
+  required List<({String reference, int count})> groupedRefs,
+  required bool includeBibleText,
+  required Map<String, String> biblicalTexts,
+  required String versionLabel,
+}) {
+  final buffer = StringBuffer();
+  buffer.writeln('Texto escaneado');
+  buffer.writeln();
+
+  final trimmedSource = sourceText.trim();
+  if (trimmedSource.isNotEmpty) {
+    buffer.writeln(trimmedSource);
+  } else {
+    buffer.writeln('(Sin texto)');
+  }
+  buffer.writeln();
+
+  if (!includeBibleText || groupedRefs.isEmpty) {
+    return buffer.toString().trimRight();
+  }
+
+  buffer.writeln('Texto bíblico');
+  buffer.writeln();
+  for (final groupedRef in groupedRefs) {
+    final reference = groupedRef.reference;
+    final bibleText = biblicalTexts[reference]?.trim();
+    if (bibleText == null || bibleText.isEmpty) {
+      continue;
+    }
+    buffer.writeln('- $reference');
+    buffer.writeln();
+    buffer.writeln('  $versionLabel');
+    buffer.writeln('  "$bibleText"');
+    buffer.writeln();
+  }
+
+  return buffer.toString().trimRight();
+}
+
 class VerseCatchApp extends StatelessWidget {
   const VerseCatchApp({
     super.key,
@@ -79,12 +236,12 @@ class VerseCatchApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'Verse Catch',
+      title: '$kAppTitle $kAppVersionLabel',
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo),
         useMaterial3: true,
       ),
-      home: VerseCatchHomePage(bibleTextLookup: bibleTextLookup),
+      home: WizardHomePage(bibleTextLookup: bibleTextLookup),
     );
   }
 }
@@ -1707,7 +1864,7 @@ class _HistoryCard extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             if (record.references.isEmpty)
-              const Text('No references detected.')
+              const Text('No se detectaron citas bíblicas.')
             else
               Wrap(
                 spacing: 8,
@@ -1803,13 +1960,16 @@ class VerseCaptureStore {
     final databasePath = p.join(directory.path, 'versecatch.db');
     final database = await openDatabase(
       databasePath,
-      version: 2,
+      version: 3,
       onCreate: (db, version) async {
         await db.execute(_kCreateCapturesTableSql);
         await db.execute(_kCreateSettingsTableSql);
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) {
+          await db.execute(_kCreateSettingsTableSql);
+        }
+        if (oldVersion < 3) {
           await db.execute(_kCreateSettingsTableSql);
         }
       },
@@ -1860,6 +2020,49 @@ class VerseCaptureStore {
       'value': versionId.toString(),
     }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
+
+  Future<bool> includeBibleTextInOutput() async {
+    final db = await _db;
+    final rows = await db.query(
+      'app_settings',
+      columns: const ['value'],
+      where: 'key = ?',
+      whereArgs: const [_kIncludeBibleTextSettingKey],
+      limit: 1,
+    );
+    if (rows.isEmpty) return false;
+    final value = rows.first['value'] as String?;
+    return value == 'true';
+  }
+
+  Future<void> setIncludeBibleTextInOutput(bool value) async {
+    final db = await _db;
+    await db.insert('app_settings', <String, Object?>{
+      'key': _kIncludeBibleTextSettingKey,
+      'value': value ? 'true' : 'false',
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  Future<String?> exportDirectoryPath() async {
+    final db = await _db;
+    final rows = await db.query(
+      'app_settings',
+      columns: const ['value'],
+      where: 'key = ?',
+      whereArgs: const [_kExportDirectorySettingKey],
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    return rows.first['value'] as String?;
+  }
+
+  Future<void> setExportDirectoryPath(String path) async {
+    final db = await _db;
+    await db.insert('app_settings', <String, Object?>{
+      'key': _kExportDirectorySettingKey,
+      'value': path,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
 }
 
 const String _kCreateCapturesTableSql = '''
@@ -1880,6 +2083,8 @@ const String _kCreateSettingsTableSql = '''
 ''';
 
 const String _kBibleVersionSettingKey = 'selected_bible_version_id';
+const String _kIncludeBibleTextSettingKey = 'include_bible_text_in_output';
+const String _kExportDirectorySettingKey = 'export_directory_path';
 
 List<String> extractVerseReferences(String text) {
   final normalized = text.replaceAll(RegExp(r'\s+'), ' ').trim();
@@ -2725,4 +2930,2743 @@ String _formatTimestamp(DateTime dateTime) {
   final hour = local.hour.toString().padLeft(2, '0');
   final minute = local.minute.toString().padLeft(2, '0');
   return '${local.year}-$month-$day $hour:$minute';
+}
+
+// ============================================================
+// WIZARD UI — VerseCatch_UI_Wizard_Specification.md
+// ============================================================
+
+enum _WizardStep {
+  chooseSource,
+  acquireContent,
+  reviewText,
+  detectRefs,
+  exploreRefs,
+  finish,
+}
+
+enum _WizardSource { text, file, image, camera, history }
+
+enum _FinishAction {
+  none,
+  savedToHistory,
+  copiedCitations,
+  copiedScannedResult,
+  exported,
+}
+
+extension _WizardStepLabel on _WizardStep {
+  String get label => switch (this) {
+        _WizardStep.chooseSource => 'Elegir origen',
+        _WizardStep.acquireContent => 'Obtener texto',
+        _WizardStep.reviewText => 'Revisar texto',
+        _WizardStep.detectRefs => 'Detectar citas',
+        _WizardStep.exploreRefs => 'Explorar citas',
+        _WizardStep.finish => 'Guardar',
+      };
+}
+
+// ============================================================
+// WizardHomePage
+// ============================================================
+
+class WizardHomePage extends StatefulWidget {
+  const WizardHomePage({super.key, required this.bibleTextLookup});
+  final BibleTextLookup bibleTextLookup;
+
+  @override
+  State<WizardHomePage> createState() => _WizardHomePageState();
+}
+
+class _WizardHomePageState extends State<WizardHomePage> {
+  final _store = VerseCaptureStore.instance;
+  static const _ocrChannel = MethodChannel('versecatch/ocr');
+
+  _WizardStep _step = _WizardStep.chooseSource;
+  _WizardSource? _source;
+
+  final _textController = TextEditingController();
+  String? _imagePath;
+  bool _processing = false;
+
+  List<({String reference, int count})> _groupedRefs = const [];
+  String? _activeReference;
+  int _currentRefIndex = 0;
+
+  String? _bibleText;
+  String _bibleMessage = kNoBibleTextMessage;
+  bool _loadingBibleText = false;
+  int _bibleLookupRequestId = 0;
+  int _selectedBibleVersionId = kYouVersionBibleVersionId;
+  bool _copiedFeedbackVisible = false;
+  Timer? _copyFeedbackTimer;
+  bool _includeBibleTextInOutput = false;
+  String? _exportDirectoryPath;
+  bool _cancelCurrentAction = false;
+
+  List<CaptureRecord> _history = const [];
+  bool _savedToHistory = false;
+  _FinishAction _completedAction = _FinishAction.none;
+  Duration? _detectionDuration;
+
+  bool get _supportsCameraCapture =>
+      !kIsWeb && (Platform.isAndroid || Platform.isIOS);
+  bool get _isDesktopPlatform =>
+      !kIsWeb && (Platform.isMacOS || Platform.isWindows || Platform.isLinux);
+
+  @override
+  void initState() {
+    super.initState();
+    _loadHistory();
+    _loadBibleVersionPreference();
+    _loadOutputPreferences();
+  }
+
+  @override
+  void dispose() {
+    _copyFeedbackTimer?.cancel();
+    _textController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadHistory() async {
+    final records = await _store.recentCaptures();
+    if (!mounted) return;
+    setState(() => _history = records);
+  }
+
+  Future<void> _loadBibleVersionPreference() async {
+    final id = await _store.selectedBibleVersionId();
+    if (!mounted || id == null) return;
+    final ok = kSupportedBibleVersions.any((v) => v.id == id && v.enabled);
+    if (!ok) return;
+    setState(() => _selectedBibleVersionId = id);
+  }
+
+  Future<void> _loadOutputPreferences() async {
+    final includeBibleText = await _store.includeBibleTextInOutput();
+    final exportDirectory = await _store.exportDirectoryPath();
+    if (!mounted) return;
+    setState(() {
+      _includeBibleTextInOutput = includeBibleText;
+      _exportDirectoryPath = exportDirectory;
+    });
+  }
+
+  BibleVersionOption _selectedBibleVersionOption() {
+    return kSupportedBibleVersions.firstWhere(
+      (version) => version.id == _selectedBibleVersionId,
+      orElse: () => kSupportedBibleVersions.first,
+    );
+  }
+
+  void _resetWizard() {
+    _textController.clear();
+    setState(() {
+      _step = _WizardStep.chooseSource;
+      _source = null;
+      _imagePath = null;
+      _processing = false;
+      _groupedRefs = const [];
+      _activeReference = null;
+      _currentRefIndex = 0;
+      _bibleText = null;
+      _bibleMessage = kNoBibleTextMessage;
+      _loadingBibleText = false;
+      _bibleLookupRequestId = 0;
+      _copiedFeedbackVisible = false;
+      _savedToHistory = false;
+      _completedAction = _FinishAction.none;
+      _cancelCurrentAction = false;
+      _detectionDuration = null;
+    });
+    _loadHistory();
+  }
+
+  void _selectSource(_WizardSource source) {
+    setState(() {
+      _source = source;
+      _step = _WizardStep.acquireContent;
+    });
+    if (source == _WizardSource.camera) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _openCamera());
+    }
+  }
+
+  void _advanceToReview() => setState(() => _step = _WizardStep.reviewText);
+
+  Future<void> _runDetection() async {
+    final text = _textController.text.trim();
+    if (text.isEmpty) return;
+    final start = DateTime.now();
+    setState(() => _step = _WizardStep.detectRefs);
+    final matches = extractVerseMatches(text);
+    final counts = <String, int>{};
+    for (final m in matches) {
+      counts[m.reference] = (counts[m.reference] ?? 0) + 1;
+    }
+    final grouped = counts.entries
+        .map((e) => (reference: e.key, count: e.value))
+        .toList(growable: false);
+    final duration = DateTime.now().difference(start);
+    if (!mounted) return;
+    setState(() {
+      _groupedRefs = grouped;
+      _detectionDuration = duration;
+      if (grouped.isNotEmpty) {
+        _activeReference = grouped.first.reference;
+        _currentRefIndex = 0;
+      }
+    });
+  }
+
+  void _goToExplore() {
+    setState(() => _step = _WizardStep.exploreRefs);
+    _loadBibleText();
+  }
+
+  void _selectRef(String reference, int index) {
+    if (_activeReference == reference) return;
+    setState(() {
+      _activeReference = reference;
+      _currentRefIndex = index;
+      _bibleText = null;
+      _bibleMessage = kLoadingBibleTextMessage;
+    });
+    _loadBibleText();
+  }
+
+  void _navigateRef(int delta) {
+    if (_groupedRefs.isEmpty) return;
+    final newIndex =
+        (_currentRefIndex + delta).clamp(0, _groupedRefs.length - 1);
+    if (newIndex == _currentRefIndex) return;
+    _selectRef(_groupedRefs[newIndex].reference, newIndex);
+  }
+
+  Future<void> _loadBibleText() async {
+    final ref = _activeReference;
+    if (ref == null) return;
+    final reqId = ++_bibleLookupRequestId;
+    setState(() {
+      _loadingBibleText = true;
+      _bibleMessage = kLoadingBibleTextMessage;
+      _bibleText = null;
+    });
+    try {
+      final text = await widget.bibleTextLookup(ref, _selectedBibleVersionId);
+      if (!mounted || reqId != _bibleLookupRequestId) return;
+      final trimmed = text?.trim();
+      setState(() {
+        _bibleText =
+            (trimmed != null && trimmed.isNotEmpty) ? trimmed : null;
+        _bibleMessage = _bibleText != null
+            ? kNoBibleTextMessage
+            : 'No se encontró texto para $ref.';
+      });
+    } on YouVersionConfigurationException catch (e) {
+      if (!mounted || reqId != _bibleLookupRequestId) return;
+      setState(() => _bibleMessage = e.message);
+    } on YouVersionApiException catch (e) {
+      if (!mounted || reqId != _bibleLookupRequestId) return;
+      setState(() => _bibleMessage = e.message);
+    } on SocketException catch (e) {
+      if (!mounted || reqId != _bibleLookupRequestId) return;
+      setState(() => _bibleMessage = 'Error de red: $e');
+    } on FormatException catch (e) {
+      if (!mounted || reqId != _bibleLookupRequestId) return;
+      setState(() => _bibleMessage = 'Respuesta inválida: $e');
+    } finally {
+      if (mounted && reqId == _bibleLookupRequestId) {
+        setState(() => _loadingBibleText = false);
+      }
+    }
+  }
+
+  Future<void> _onBibleVersionChanged(int? id) async {
+    if (id == null || id == _selectedBibleVersionId) return;
+    setState(() => _selectedBibleVersionId = id);
+    await _store.setSelectedBibleVersionId(id);
+    await _loadBibleText();
+  }
+
+  Future<void> _toggleIncludeBibleText(bool value) async {
+    setState(() => _includeBibleTextInOutput = value);
+    await _store.setIncludeBibleTextInOutput(value);
+  }
+
+  Future<({String content, String? warning})> _buildOutputContentForCurrentSelection({
+    required String sourceText,
+  }) async {
+    final version = _selectedBibleVersionOption();
+    final payload = await _buildClipboardPayloadForCurrentSelection(
+      sourceText: sourceText,
+    );
+    return (
+      content: buildOutputContent(
+        sourceText: sourceText,
+        groupedRefs: _groupedRefs,
+        includeBibleText: _includeBibleTextInOutput,
+        biblicalTexts: payload.biblicalTexts,
+        versionLabel: version.code,
+      ),
+      warning: payload.warning,
+    );
+  }
+
+  Future<({Map<String, String> biblicalTexts, String? warning})>
+      _buildClipboardPayloadForCurrentSelection({
+    required String sourceText,
+    void Function(int current, int total)? onProgress,
+  }) async {
+    final biblicalTexts = <String, String>{};
+    String? warning;
+    if (_includeBibleTextInOutput && _groupedRefs.isNotEmpty) {
+      final collected = await _collectBibleTextsForReferences(
+        _groupedRefs.map((ref) => ref.reference).toList(growable: false),
+        onProgress: onProgress,
+      );
+      biblicalTexts.addAll(collected.biblicalTexts);
+      if (collected.errors.isNotEmpty) {
+        warning = collected.errors.join('\n');
+      }
+    }
+    return (biblicalTexts: biblicalTexts, warning: warning);
+  }
+
+  Future<({Map<String, String> biblicalTexts, List<String> errors})>
+      _collectBibleTextsForReferences(
+    List<String> references, {
+    void Function(int current, int total)? onProgress,
+  }) async {
+    final collected = <String, String>{};
+    final errors = <String>[];
+    final random = Random();
+    final rateLimitWindowMs =
+        kAppEnvironment.toLowerCase() == 'live' ? 1600 : 900;
+    var nextAllowedAt = DateTime.now();
+
+    for (var index = 0; index < references.length; index++) {
+      if (_cancelCurrentAction) break;
+      onProgress?.call(index + 1, references.length);
+      final reference = references[index];
+      if (index > 0) {
+        final now = DateTime.now();
+        final waitMs = nextAllowedAt.difference(now).inMilliseconds;
+        final randomJitterMs = random.nextInt(180) + 70;
+        final delayMs = waitMs > 0 ? waitMs + randomJitterMs : randomJitterMs;
+        await Future<void>.delayed(Duration(milliseconds: delayMs));
+      }
+      try {
+        final text = await widget.bibleTextLookup(
+          reference,
+          _selectedBibleVersionId,
+        );
+        final trimmed = text?.trim();
+        if (trimmed != null && trimmed.isNotEmpty) {
+          collected[reference] = trimmed;
+        }
+      } catch (error, stackTrace) {
+        final detail = error.toString();
+        errors.add('$reference: $detail');
+        debugPrint('Bible text lookup failed for $reference: $error\n$stackTrace');
+      } finally {
+        nextAllowedAt = DateTime.now().add(
+          Duration(milliseconds: rateLimitWindowMs),
+        );
+      }
+    }
+    return (biblicalTexts: collected, errors: errors);
+  }
+
+  Future<void> _copyBibleText() async {
+    final ref = _activeReference;
+    final text = _bibleText;
+    if (ref == null || text == null) return;
+    final version = kSupportedBibleVersions.firstWhere(
+      (v) => v.id == _selectedBibleVersionId,
+      orElse: () => kSupportedBibleVersions.first,
+    );
+    await Clipboard.setData(
+      ClipboardData(text: '$ref (${version.code})\n"$text"'),
+    );
+    if (!mounted) return;
+    setState(() => _copiedFeedbackVisible = true);
+    _copyFeedbackTimer?.cancel();
+    _copyFeedbackTimer = Timer(const Duration(milliseconds: 1400), () {
+      if (!mounted) return;
+      setState(() => _copiedFeedbackVisible = false);
+    });
+  }
+
+  Future<T?> _showActionProgressDialog<T>({
+    required String loadingMessage,
+    required Future<T> Function(void Function(int current, int total) updateProgress)
+        action,
+  }) async {
+    final startedAt = DateTime.now();
+    final progressState = ValueNotifier<({int current, int total, bool completed})>(
+      (current: 0, total: 0, completed: false),
+    );
+    void Function()? refreshDialog;
+    showDialog<T?>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (dialogContext, setState) {
+            refreshDialog = () => setState(() {});
+            final theme = Theme.of(dialogContext);
+            final currentProgress = progressState.value;
+            return AlertDialog(
+              content: Row(
+                children: [
+                  SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: currentProgress.completed
+                        ? Icon(
+                            Icons.check_circle,
+                            size: 24,
+                            color: Colors.green.shade600,
+                          )
+                        : const CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          currentProgress.completed ? 'Listo' : loadingMessage,
+                          style: const TextStyle(fontWeight: FontWeight.w500),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          buildProcessingStatusLabel(
+                            current: currentProgress.current,
+                            total: currentProgress.total,
+                            completed: currentProgress.completed,
+                            elapsed: DateTime.now().difference(startedAt),
+                          ),
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Cancelar',
+                    icon: const Icon(Icons.close),
+                    onPressed: () {
+                      _cancelCurrentAction = true;
+                      if (Navigator.of(dialogContext).canPop()) {
+                        Navigator.of(dialogContext).pop();
+                      }
+                    },
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+
+    try {
+      final result = await action((current, total) {
+        if (_cancelCurrentAction) return;
+        progressState.value = (current: current, total: total, completed: false);
+        refreshDialog?.call();
+      });
+      if (_cancelCurrentAction) {
+        if (Navigator.canPop(context)) {
+          Navigator.of(context).pop();
+        }
+        return null;
+      }
+      progressState.value = (
+        current: progressState.value.total,
+        total: progressState.value.total,
+        completed: true,
+      );
+      refreshDialog?.call();
+      await Future<void>.delayed(const Duration(milliseconds: 650));
+      if (Navigator.canPop(context)) {
+        Navigator.of(context).pop();
+      }
+      return result;
+    } catch (error) {
+      if (Navigator.canPop(context)) {
+        Navigator.of(context).pop();
+      }
+      if (!mounted) return null;
+      await _showOutputFailureDialog(error);
+      return null;
+    } finally {
+      _cancelCurrentAction = false;
+    }
+  }
+
+  Future<void> _copyAllReferences() async {
+    final text = _textController.text.trim();
+    if (_groupedRefs.isEmpty || text.isEmpty) return;
+
+    try {
+      final version = _selectedBibleVersionOption();
+      final payload = await _showActionProgressDialog<({Map<String, String> biblicalTexts, String? warning})>(
+        loadingMessage: 'Preparando copia de citas…',
+        action: (updateProgress) async {
+          return _buildClipboardPayloadForCurrentSelection(
+            sourceText: text,
+            onProgress: updateProgress,
+          );
+        },
+      );
+      if (payload == null || _cancelCurrentAction) return;
+      if (payload.warning != null) {
+        await _showOutputFailureDialog(payload.warning!);
+      }
+      final clipboardContent = buildCitationsClipboardContent(
+        groupedRefs: _groupedRefs,
+        includeBibleText: _includeBibleTextInOutput,
+        biblicalTexts: payload.biblicalTexts,
+        versionLabel: version.code,
+      );
+      await Clipboard.setData(ClipboardData(text: clipboardContent));
+      if (!mounted) return;
+      setState(() => _completedAction = _FinishAction.copiedCitations);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Citas copiadas')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      await _showOutputFailureDialog(error);
+    }
+  }
+
+  Future<void> _shareResult() async {
+    final text = _textController.text.trim();
+    if (text.isEmpty) return;
+
+    try {
+      final version = _selectedBibleVersionOption();
+      final payload = await _showActionProgressDialog<({Map<String, String> biblicalTexts, String? warning})>(
+        loadingMessage: 'Preparando resultado escaneado…',
+        action: (updateProgress) async {
+          return _buildClipboardPayloadForCurrentSelection(
+            sourceText: text,
+            onProgress: updateProgress,
+          );
+        },
+      );
+      if (payload == null || _cancelCurrentAction) return;
+      if (payload.warning != null) {
+        await _showOutputFailureDialog(payload.warning!);
+      }
+      final clipboardContent = buildScannedResultClipboardContent(
+        sourceText: text,
+        groupedRefs: _groupedRefs,
+        includeBibleText: _includeBibleTextInOutput,
+        biblicalTexts: payload.biblicalTexts,
+        versionLabel: version.code,
+      );
+      await Clipboard.setData(ClipboardData(text: clipboardContent));
+      if (!mounted) return;
+      setState(() => _completedAction = _FinishAction.copiedScannedResult);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Resultado copiado al portapapeles'),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      await _showOutputFailureDialog(error);
+    }
+  }
+
+  Future<void> _exportText() async {
+    final text = _textController.text.trim();
+    if (text.isEmpty) return;
+
+    final defaultDirectory = await _resolveExportDirectoryPath();
+    final timestamp = DateTime.now()
+        .toIso8601String()
+        .replaceAll(':', '-')
+        .substring(0, 19);
+    final defaultFileName = 'versecatch_$timestamp.txt';
+    final fileNameController = TextEditingController(text: defaultFileName);
+    final directoryController = TextEditingController(text: defaultDirectory.path);
+    final result = await showDialog<({String directoryPath, String fileName})>(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              title: const Text('Exportar texto'),
+              content: SizedBox(
+                width: 420,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'Elige la carpeta de destino y el nombre del archivo.',
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: fileNameController,
+                      decoration: const InputDecoration(
+                        labelText: 'Nombre del archivo',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: directoryController,
+                            decoration: const InputDecoration(
+                              labelText: 'Carpeta destino',
+                              border: OutlineInputBorder(),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        FilledButton.tonal(
+                          onPressed: () => setState(() {
+                            directoryController.text = defaultDirectory.path;
+                          }),
+                          child: const Text('Usar ruta'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  child: const Text('Cancelar'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(
+                    (
+                      directoryPath: directoryController.text.trim(),
+                      fileName: fileNameController.text.trim().isEmpty
+                          ? defaultFileName
+                          : fileNameController.text.trim(),
+                    ),
+                  ),
+                  child: const Text('Exportar'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+    if (result == null) return;
+
+    final selectedDirectory = Directory(result.directoryPath);
+    if (!await selectedDirectory.exists()) {
+      await selectedDirectory.create(recursive: true);
+    }
+
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return AlertDialog(
+          content: Row(
+            children: [
+              const SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 300),
+                  child: Text(
+                    _includeBibleTextInOutput
+                        ? 'Obteniendo textos bíblicos…'
+                        : 'Preparando exportación…',
+                    key: ValueKey(_includeBibleTextInOutput),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+
+    try {
+      final buildResult = await _buildOutputContentForCurrentSelection(
+        sourceText: text,
+      );
+      if (buildResult.warning != null) {
+        await _showOutputFailureDialog(buildResult.warning!);
+      }
+      final fileName = result.fileName.trim().isEmpty
+          ? defaultFileName
+          : result.fileName.trim();
+      final sanitizedFileName = fileName.endsWith('.txt')
+          ? fileName
+          : '$fileName.txt';
+      final filePath = p.join(selectedDirectory.path, sanitizedFileName);
+      await File(filePath).writeAsString(buildResult.content);
+      await _store.setExportDirectoryPath(selectedDirectory.path);
+      if (!mounted) return;
+      if (Navigator.canPop(context)) {
+        Navigator.of(context).pop();
+      }
+      if (!mounted) return;
+      setState(() => _completedAction = _FinishAction.exported);
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Texto exportado'),
+          content: SelectableText('Archivo guardado en:\n$filePath'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Aceptar'),
+            ),
+          ],
+        ),
+      );
+    } catch (error) {
+      if (Navigator.canPop(context)) {
+        Navigator.of(context).pop();
+      }
+      if (!mounted) return;
+      await _showOutputFailureDialog(error);
+    }
+  }
+
+  Future<Directory> _resolveExportDirectoryPath() async {
+    if (_exportDirectoryPath != null && _exportDirectoryPath!.isNotEmpty) {
+      final directory = Directory(_exportDirectoryPath!);
+      if (await directory.exists()) {
+        return directory;
+      }
+    }
+
+    if (!kIsWeb) {
+      final downloadsDirectory = await getDownloadsDirectory();
+      if (downloadsDirectory != null) {
+        return downloadsDirectory;
+      }
+    }
+
+    return getApplicationDocumentsDirectory();
+  }
+
+  Future<void> _showOutputFailureDialog(Object error) async {
+    if (!mounted) return;
+    final message = error.toString();
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        final theme = Theme.of(dialogContext);
+        return AlertDialog(
+          title: const Text('No fue posible completar la acción'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'No fue posible recuperar todo el texto bíblico solicitado. Se continuará con el contenido escaneado.',
+              ),
+              const SizedBox(height: 8),
+              Text(
+                message,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                  fontSize: 12,
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Aceptar'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _saveToHistory() async {
+    final text = _textController.text.trim();
+    if (text.isEmpty || _savedToHistory) return;
+    await _store.insert(CaptureRecord(
+      createdAt: DateTime.now(),
+      imagePath: _imagePath ?? '',
+      recognizedText: text,
+      references: _groupedRefs.map((r) => r.reference).toList(),
+    ));
+    await _loadHistory();
+    if (!mounted) return;
+    setState(() {
+      _savedToHistory = true;
+      _completedAction = _FinishAction.savedToHistory;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Guardado en historial')),
+    );
+  }
+
+  Future<void> _pickTextFile() async {
+    final result = await FilePicker.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const ['txt'],
+    );
+    if (result == null) return;
+    final path = result.files.single.path;
+    if (path == null) return;
+    try {
+      _textController.text = await File(path).readAsString();
+      _advanceToReview();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('No se pudo leer el archivo: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _pickImage() async {
+    final result = await FilePicker.pickFiles(type: FileType.image);
+    if (result == null) return;
+    final path = result.files.single.path;
+    if (path == null) return;
+    setState(() {
+      _processing = true;
+      _imagePath = path;
+    });
+    try {
+      _textController.text = await _runOcr(path);
+      _advanceToReview();
+    } catch (e, st) {
+      debugPrint('OCR error: $e\n$st');
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('OCR falló: $e')));
+      }
+    } finally {
+      if (mounted) setState(() => _processing = false);
+    }
+  }
+
+  Future<void> _openCamera() async {
+    if (!_supportsCameraCapture) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Cámara no disponible en esta plataforma.'),
+          ),
+        );
+      }
+      setState(() => _step = _WizardStep.chooseSource);
+      return;
+    }
+    final imagePath = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const CameraCapturePage(),
+        fullscreenDialog: true,
+      ),
+    );
+    if (imagePath == null || !mounted) {
+      setState(() => _step = _WizardStep.chooseSource);
+      return;
+    }
+    setState(() {
+      _processing = true;
+      _imagePath = imagePath;
+    });
+    try {
+      _textController.text = await _runOcr(imagePath);
+      _advanceToReview();
+    } catch (e, st) {
+      debugPrint('OCR error: $e\n$st');
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('OCR falló: $e')));
+        setState(() => _step = _WizardStep.chooseSource);
+      }
+    } finally {
+      if (mounted) setState(() => _processing = false);
+    }
+  }
+
+  Future<String> _runOcr(String imagePath) async {
+    final prepared = await _prepareOcrImage(imagePath);
+    try {
+      if (!(Platform.isMacOS || Platform.isIOS)) return '';
+      final result = await _ocrChannel.invokeMethod<String>(
+        'recognizeTextFromPath',
+        {'path': prepared.path},
+      );
+      return result?.trim() ?? '';
+    } finally {
+      if (prepared.temporary) {
+        try {
+          await File(prepared.path).delete();
+        } on FileSystemException catch (_) {}
+      }
+    }
+  }
+
+  Future<({String path, bool temporary})> _prepareOcrImage(
+    String sourcePath,
+  ) async {
+    final bytes = await File(sourcePath).readAsBytes();
+    final decoded = img.decodeImage(bytes);
+    if (decoded == null) return (path: sourcePath, temporary: false);
+    const cf = 0.9;
+    final cw = (decoded.width * cf).round();
+    final ch = (decoded.height * cf).round();
+    final cx = ((decoded.width - cw) / 2).round();
+    final cy = ((decoded.height - ch) / 2).round();
+    final cropped =
+        img.copyCrop(decoded, x: cx, y: cy, width: cw, height: ch);
+    final gray = img.grayscale(cropped);
+    final resized =
+        gray.width < 1200 ? img.copyResize(gray, width: 1200) : gray;
+    final dir = await getTemporaryDirectory();
+    if (!await dir.exists()) await dir.create(recursive: true);
+    final out = p.join(
+      dir.path,
+      'ocr_${DateTime.now().microsecondsSinceEpoch}.jpg',
+    );
+    await File(out).writeAsBytes(img.encodeJpg(resized, quality: 95),
+        flush: true);
+    return (path: out, temporary: true);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: SafeArea(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final useDesktop =
+                _isDesktopPlatform || constraints.maxWidth >= 720;
+            return useDesktop
+                ? _buildDesktopLayout(context)
+                : _buildMobileLayout(context);
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMobileLayout(BuildContext context) {
+    final versionLabel = '$kAppTitle $kAppVersionLabel';
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
+          child: SizedBox(
+            width: double.infinity,
+            child: Text(
+              versionLabel,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.bold,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+            ),
+          ),
+        ),
+        _WizardTopBar(step: _step, onReset: _resetWizard),
+        const Divider(height: 1),
+        Expanded(
+          child: _buildStepContent(context, isDesktop: false),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDesktopLayout(BuildContext context) {
+    return Row(
+      children: [
+        _WizardSidebar(step: _step, onReset: _resetWizard),
+        const VerticalDivider(width: 1),
+        Expanded(
+          child: _buildStepContent(context, isDesktop: true),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildStepContent(BuildContext context, {required bool isDesktop}) {
+    return switch (_step) {
+      _WizardStep.chooseSource => _ChooseSourceStep(
+          cameraSupported: _supportsCameraCapture,
+          onSelect: _selectSource,
+        ),
+      _WizardStep.acquireContent => _AcquireContentStep(
+          source: _source ?? _WizardSource.text,
+          textController: _textController,
+          imagePath: _imagePath,
+          processing: _processing,
+          history: _history,
+          onPickFile: _pickTextFile,
+          onPickImage: _pickImage,
+          onOpenCamera: _openCamera,
+          onContinueText: _advanceToReview,
+          onHistorySelect: (r) {
+            _textController.text = r.recognizedText;
+            _advanceToReview();
+          },
+        ),
+      _WizardStep.reviewText => _ReviewTextStep(
+          textController: _textController,
+          onBack: () => setState(() => _step = _WizardStep.acquireContent),
+          onContinue: _runDetection,
+        ),
+      _WizardStep.detectRefs => _DetectRefsStep(
+          charCount: _textController.text.length,
+          groupedRefs: _groupedRefs,
+          detectionDuration: _detectionDuration,
+          onBack: () => setState(() => _step = _WizardStep.reviewText),
+          onContinue: _groupedRefs.isNotEmpty ? _goToExplore : null,
+        ),
+      _WizardStep.exploreRefs => _ExploreRefsStep(
+          groupedRefs: _groupedRefs,
+          currentRefIndex: _currentRefIndex,
+          activeReference: _activeReference,
+          bibleText: _bibleText,
+          bibleMessage: _bibleMessage,
+          loadingBibleText: _loadingBibleText,
+          selectedBibleVersionId: _selectedBibleVersionId,
+          copiedFeedbackVisible: _copiedFeedbackVisible,
+          isDesktop: isDesktop,
+          onRefSelected: _selectRef,
+          onNavigate: _navigateRef,
+          onBibleVersionChanged: _onBibleVersionChanged,
+          onCopyBibleText: _copyBibleText,
+          onBack: () => setState(() => _step = _WizardStep.detectRefs),
+          onContinue: () => setState(() => _step = _WizardStep.finish),
+        ),
+      _WizardStep.finish => _FinishStep(
+          refCount: _groupedRefs.length,
+          savedToHistory: _savedToHistory,
+          completedAction: _completedAction,
+          includeBibleTextInOutput: _includeBibleTextInOutput,
+          exportDirectoryPath: _exportDirectoryPath,
+          onSaveToHistory: _saveToHistory,
+          onCopyReferences: _copyAllReferences,
+          onShareResult: _shareResult,
+          onExportText: _exportText,
+          onToggleIncludeBibleText: _toggleIncludeBibleText,
+          onNewScan: _resetWizard,
+        ),
+    };
+  }
+}
+
+// ============================================================
+// Stepper components
+// ============================================================
+
+class _WizardTopBar extends StatelessWidget {
+  const _WizardTopBar({required this.step, required this.onReset});
+  final _WizardStep step;
+  final VoidCallback onReset;
+
+  @override
+  Widget build(BuildContext context) {
+    final currentIndex = step.index;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+      child: Row(
+        children: [
+          Expanded(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  for (int i = 0; i < _WizardStep.values.length; i++) ...[
+                    if (i > 0)
+                      _StepConnector(completed: i <= currentIndex),
+                    _StepCircle(
+                      number: i + 1,
+                      label: _WizardStep.values[i].label,
+                      state: i < currentIndex
+                          ? _StepState.completed
+                          : i == currentIndex
+                              ? _StepState.active
+                              : _StepState.inactive,
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.restart_alt_outlined),
+            tooltip: 'Nuevo escaneo',
+            onPressed: onReset,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _WizardSidebar extends StatelessWidget {
+  const _WizardSidebar({required this.step, required this.onReset});
+  final _WizardStep step;
+  final VoidCallback onReset;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final currentIndex = step.index;
+    return Container(
+      width: 192,
+      color: theme.colorScheme.surfaceContainerLow,
+      padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.menu_book_rounded,
+                  color: theme.colorScheme.primary, size: 20),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  '$kAppTitle $kAppVersionLabel',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    color: theme.colorScheme.primary,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 24),
+          for (int i = 0; i < _WizardStep.values.length; i++) ...[
+            _VerticalStepItem(
+              number: i + 1,
+              label: _WizardStep.values[i].label,
+              state: i < currentIndex
+                  ? _StepState.completed
+                  : i == currentIndex
+                      ? _StepState.active
+                      : _StepState.inactive,
+            ),
+            if (i < _WizardStep.values.length - 1)
+              Padding(
+                padding: const EdgeInsets.only(left: 14),
+                child: Container(
+                  width: 2,
+                  height: 18,
+                  color: i < currentIndex
+                      ? theme.colorScheme.primary
+                      : theme.colorScheme.outlineVariant,
+                ),
+              ),
+          ],
+          const Spacer(),
+          TextButton.icon(
+            onPressed: onReset,
+            icon: const Icon(Icons.restart_alt_outlined, size: 16),
+            label: const Text('Nuevo escaneo'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+enum _StepState { active, completed, inactive }
+
+class _StepCircle extends StatelessWidget {
+  const _StepCircle({
+    required this.number,
+    required this.label,
+    required this.state,
+  });
+  final int number;
+  final String label;
+  final _StepState state;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final primary = theme.colorScheme.primary;
+    final isActive = state == _StepState.active;
+    final isCompleted = state == _StepState.completed;
+    final filled = isActive || isCompleted;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 32,
+          height: 32,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: filled
+                ? primary
+                : theme.colorScheme.surfaceContainerHighest,
+            border: Border.all(
+              color: filled ? primary : theme.colorScheme.outline,
+              width: isActive ? 2 : 1.5,
+            ),
+          ),
+          child: Center(
+            child: isCompleted
+                ? Icon(Icons.check, size: 16,
+                    color: theme.colorScheme.onPrimary)
+                : Text(
+                    '$number',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold,
+                      color: isActive
+                          ? theme.colorScheme.onPrimary
+                          : theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+          ),
+        ),
+        const SizedBox(height: 4),
+        SizedBox(
+          width: 60,
+          child: Text(
+            label,
+            textAlign: TextAlign.center,
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: filled
+                  ? theme.colorScheme.primary
+                  : theme.colorScheme.onSurfaceVariant,
+              fontWeight: isActive ? FontWeight.bold : null,
+            ),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _StepConnector extends StatelessWidget {
+  const _StepConnector({required this.completed});
+  final bool completed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 20,
+      height: 2,
+      color: completed
+          ? Theme.of(context).colorScheme.primary
+          : Theme.of(context).colorScheme.outlineVariant,
+    );
+  }
+}
+
+class _VerticalStepItem extends StatelessWidget {
+  const _VerticalStepItem({
+    required this.number,
+    required this.label,
+    required this.state,
+  });
+  final int number;
+  final String label;
+  final _StepState state;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final primary = theme.colorScheme.primary;
+    final isActive = state == _StepState.active;
+    final isCompleted = state == _StepState.completed;
+    final filled = isActive || isCompleted;
+    return Row(
+      children: [
+        Container(
+          width: 28,
+          height: 28,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: filled
+                ? primary
+                : theme.colorScheme.surfaceContainerHighest,
+            border: Border.all(
+              color: filled ? primary : theme.colorScheme.outline,
+              width: 1.5,
+            ),
+          ),
+          child: Center(
+            child: isCompleted
+                ? Icon(Icons.check, size: 14,
+                    color: theme.colorScheme.onPrimary)
+                : Text(
+                    '$number',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                      color: isActive
+                          ? theme.colorScheme.onPrimary
+                          : theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            label,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: isActive
+                  ? primary
+                  : isCompleted
+                      ? theme.colorScheme.onSurface
+                      : theme.colorScheme.onSurfaceVariant,
+              fontWeight: isActive ? FontWeight.bold : null,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ============================================================
+// Step 1 — Choose Source
+// ============================================================
+
+class _ChooseSourceStep extends StatelessWidget {
+  const _ChooseSourceStep({
+    required this.cameraSupported,
+    required this.onSelect,
+  });
+  final bool cameraSupported;
+  final ValueChanged<_WizardSource> onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('¿Cómo quieres comenzar?',
+              style: theme.textTheme.headlineSmall),
+          const SizedBox(height: 6),
+          Text(
+            'Elige una opción para importar tu contenido.',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 24),
+          _SourceCard(
+            icon: Icons.text_fields_rounded,
+            title: 'Escribir o pegar texto',
+            subtitle:
+                'Escribe directamente o pega desde el portapapeles.',
+            onTap: () => onSelect(_WizardSource.text),
+          ),
+          const SizedBox(height: 12),
+          _SourceCard(
+            icon: Icons.description_outlined,
+            title: 'Abrir archivo de texto',
+            subtitle: 'Selecciona un archivo .txt desde tu dispositivo.',
+            onTap: () => onSelect(_WizardSource.file),
+          ),
+          const SizedBox(height: 12),
+          _SourceCard(
+            icon: Icons.image_outlined,
+            title: 'Elegir una imagen',
+            subtitle: 'Selecciona una imagen de tu galería.',
+            onTap: () => onSelect(_WizardSource.image),
+          ),
+          if (cameraSupported) ...[
+            const SizedBox(height: 12),
+            _SourceCard(
+              icon: Icons.camera_alt_outlined,
+              title: 'Tomar fotografía',
+              subtitle: 'Usa la cámara para capturar el texto.',
+              onTap: () => onSelect(_WizardSource.camera),
+            ),
+          ],
+          const SizedBox(height: 12),
+          _SourceCard(
+            icon: Icons.history_rounded,
+            title: 'Historial de escaneos',
+            subtitle: 'Revisa escaneos anteriores.',
+            onTap: () => onSelect(_WizardSource.history),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SourceCard extends StatelessWidget {
+  const _SourceCard({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Card(
+      margin: EdgeInsets.zero,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          child: Row(
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primaryContainer,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(icon,
+                    color: theme.colorScheme.onPrimaryContainer, size: 24),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, style: theme.textTheme.titleSmall),
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(Icons.chevron_right,
+                  color: theme.colorScheme.onSurfaceVariant),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ============================================================
+// Step 2 — Acquire Content
+// ============================================================
+
+class _AcquireContentStep extends StatelessWidget {
+  const _AcquireContentStep({
+    required this.source,
+    required this.textController,
+    required this.imagePath,
+    required this.processing,
+    required this.history,
+    required this.onPickFile,
+    required this.onPickImage,
+    required this.onOpenCamera,
+    required this.onContinueText,
+    required this.onHistorySelect,
+  });
+  final _WizardSource source;
+  final TextEditingController textController;
+  final String? imagePath;
+  final bool processing;
+  final List<CaptureRecord> history;
+  final VoidCallback onPickFile;
+  final VoidCallback onPickImage;
+  final VoidCallback onOpenCamera;
+  final VoidCallback onContinueText;
+  final ValueChanged<CaptureRecord> onHistorySelect;
+
+  @override
+  Widget build(BuildContext context) {
+    return switch (source) {
+      _WizardSource.text => _TextInputContent(
+          controller: textController,
+          onContinue: onContinueText,
+        ),
+      _WizardSource.file => _FilePickerContent(
+          processing: processing,
+          onPickFile: onPickFile,
+        ),
+      _WizardSource.image => _ImagePickerContent(
+          imagePath: imagePath,
+          processing: processing,
+          onPickImage: onPickImage,
+        ),
+      _WizardSource.camera => _CameraLoadingContent(processing: processing),
+      _WizardSource.history => _HistoryListContent(
+          history: history,
+          onSelect: onHistorySelect,
+        ),
+    };
+  }
+}
+
+class _TextInputContent extends StatelessWidget {
+  const _TextInputContent(
+      {required this.controller, required this.onContinue});
+  final TextEditingController controller;
+  final VoidCallback onContinue;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Escribe o pega el texto',
+              style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 12),
+          Expanded(
+            child: TextField(
+              key: const ValueKey('source-text-field'),
+              controller: controller,
+              expands: true,
+              maxLines: null,
+              minLines: null,
+              textAlignVertical: TextAlignVertical.top,
+              decoration: const InputDecoration(
+                hintText: 'Pega o escribe texto aquí…',
+                border: OutlineInputBorder(),
+                alignLabelWithHint: true,
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: ListenableBuilder(
+              listenable: controller,
+              builder: (context, _) => FilledButton.icon(
+                onPressed:
+                    controller.text.trim().isNotEmpty ? onContinue : null,
+                icon: const Icon(Icons.arrow_forward, size: 18),
+                label: const Text('Continuar'),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FilePickerContent extends StatelessWidget {
+  const _FilePickerContent(
+      {required this.processing, required this.onPickFile});
+  final bool processing;
+  final VoidCallback onPickFile;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.description_outlined,
+                size: 64, color: theme.colorScheme.primary),
+            const SizedBox(height: 16),
+            Text('Selecciona un archivo .txt',
+                style: theme.textTheme.titleMedium),
+            const SizedBox(height: 8),
+            Text(
+              'El contenido se cargará automáticamente.',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodySmall
+                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+            ),
+            const SizedBox(height: 24),
+            FilledButton.icon(
+              onPressed: processing ? null : onPickFile,
+              icon: processing
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Colors.white),
+                    )
+                  : const Icon(Icons.file_open_outlined),
+              label: Text(processing ? 'Procesando…' : 'Abrir archivo'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ImagePickerContent extends StatelessWidget {
+  const _ImagePickerContent({
+    required this.imagePath,
+    required this.processing,
+    required this.onPickImage,
+  });
+  final String? imagePath;
+  final bool processing;
+  final VoidCallback onPickImage;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final hasImage = imagePath != null && File(imagePath!).existsSync();
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text('Selecciona una imagen',
+              style: theme.textTheme.titleMedium),
+          const SizedBox(height: 16),
+          if (hasImage)
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: Image.file(
+                File(imagePath!),
+                width: double.infinity,
+                height: 220,
+                fit: BoxFit.cover,
+              ),
+            )
+          else
+            Container(
+              height: 180,
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surfaceContainerHighest
+                    .withValues(alpha: 0.4),
+                borderRadius: BorderRadius.circular(12),
+                border:
+                    Border.all(color: theme.colorScheme.outlineVariant),
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.image_outlined,
+                      size: 48, color: theme.colorScheme.primary),
+                  const SizedBox(height: 8),
+                  Text('Sin imagen',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant)),
+                ],
+              ),
+            ),
+          const SizedBox(height: 16),
+          FilledButton.icon(
+            onPressed: processing ? null : onPickImage,
+            icon: processing
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: Colors.white),
+                  )
+                : Icon(hasImage
+                    ? Icons.refresh_outlined
+                    : Icons.photo_library_outlined),
+            label: Text(processing
+                ? 'Procesando OCR…'
+                : hasImage
+                    ? 'Cambiar imagen'
+                    : 'Elegir imagen'),
+          ),
+          if (processing) ...[
+            const SizedBox(height: 12),
+            const LinearProgressIndicator(),
+            const SizedBox(height: 8),
+            Text(
+              'Extrayendo texto con OCR…',
+              style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _CameraLoadingContent extends StatelessWidget {
+  const _CameraLoadingContent({required this.processing});
+  final bool processing;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const CircularProgressIndicator(),
+          const SizedBox(height: 16),
+          Text(
+            processing ? 'Procesando imagen…' : 'Abriendo cámara…',
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HistoryListContent extends StatelessWidget {
+  const _HistoryListContent({
+    required this.history,
+    required this.onSelect,
+  });
+  final List<CaptureRecord> history;
+  final ValueChanged<CaptureRecord> onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    if (history.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.history_outlined,
+                  size: 48, color: theme.colorScheme.onSurfaceVariant),
+              const SizedBox(height: 12),
+              Text('Sin historial', style: theme.textTheme.titleMedium),
+              const SizedBox(height: 8),
+              Text(
+                'Tus escaneos guardados aparecerán aquí.',
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+    return ListView.separated(
+      padding: const EdgeInsets.all(16),
+      itemCount: history.length,
+      separatorBuilder: (_, _) => const SizedBox(height: 8),
+      itemBuilder: (context, index) {
+        final record = history[index];
+        return Card(
+          margin: EdgeInsets.zero,
+          child: InkWell(
+            onTap: () => onSelect(record),
+            borderRadius: BorderRadius.circular(12),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.history_rounded,
+                          size: 14, color: theme.colorScheme.primary),
+                      const SizedBox(width: 6),
+                      Text(
+                        _formatTimestamp(record.createdAt),
+                        style: theme.textTheme.labelSmall?.copyWith(
+                            color: theme.colorScheme.primary),
+                      ),
+                      const Spacer(),
+                      if (record.references.isNotEmpty)
+                        Chip(
+                          label: Text('${record.references.length} citas'),
+                          padding: EdgeInsets.zero,
+                          visualDensity: VisualDensity.compact,
+                          labelStyle: theme.textTheme.labelSmall,
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    record.recognizedText.isEmpty
+                        ? 'Sin texto reconocido.'
+                        : record.recognizedText,
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodySmall,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+// ============================================================
+// Step 3 — Review Text
+// ============================================================
+
+class _ReviewTextStep extends StatefulWidget {
+  const _ReviewTextStep({
+    required this.textController,
+    required this.onBack,
+    required this.onContinue,
+  });
+  final TextEditingController textController;
+  final VoidCallback onBack;
+  final VoidCallback onContinue;
+
+  @override
+  State<_ReviewTextStep> createState() => _ReviewTextStepState();
+}
+
+class _ReviewTextStepState extends State<_ReviewTextStep> {
+  bool _showPreview = true;
+  List<VerseMatch> _previewMatches = const [];
+
+  @override
+  void initState() {
+    super.initState();
+    widget.textController.addListener(_onTextChanged);
+    _refreshPreview();
+  }
+
+  @override
+  void dispose() {
+    widget.textController.removeListener(_onTextChanged);
+    super.dispose();
+  }
+
+  void _onTextChanged() {
+    if (_showPreview) {
+      setState(() => _showPreview = false);
+    }
+  }
+
+  void _refreshPreview() {
+    final text = widget.textController.text;
+    setState(() {
+      _previewMatches = extractVerseMatches(text);
+      _showPreview = true;
+    });
+  }
+
+  TextSpan _buildHighlightedPreview(String text) {
+    final spans = <InlineSpan>[];
+    final sorted = [..._previewMatches]..sort((a, b) => a.start.compareTo(b.start));
+    var pos = 0;
+
+    for (final match in sorted) {
+      final start = match.start.clamp(0, text.length);
+      final end = match.end.clamp(0, text.length);
+      if (start >= end) continue;
+      if (start > pos) {
+        spans.add(TextSpan(text: text.substring(pos, start)));
+      }
+      spans.add(
+        TextSpan(
+          text: text.substring(start, end),
+          style: const TextStyle(
+            color: Color(0xFFAD1457),
+            fontWeight: FontWeight.bold,
+            backgroundColor: Color(0xFFF8BBD0),
+          ),
+        ),
+      );
+      pos = end;
+    }
+
+    if (pos < text.length) {
+      spans.add(TextSpan(text: text.substring(pos)));
+    }
+
+    return TextSpan(children: spans);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final charCount = widget.textController.text.length;
+    final previewText = widget.textController.text;
+    final previewLabel = _previewMatches.length == 1
+        ? '1 cita resaltada'
+        : '${_previewMatches.length} citas resaltadas';
+    return SizedBox.expand(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Revisar el texto reconocido',
+                        style: theme.textTheme.titleMedium),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Edita cualquier parte si es necesario.',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant),
+                    ),
+                  ],
+                ),
+              ),
+              IconButton.outlined(
+                onPressed: previewText.trim().isEmpty ? null : _refreshPreview,
+                tooltip: 'Volver a revisar citas',
+                icon: const Icon(Icons.visibility_outlined, size: 18),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final useSplit = constraints.maxWidth >= 760;
+              final previewPanel = _showPreview
+                  ? Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(10),
+                        color: theme.colorScheme.surfaceContainerLow,
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Vista previa de citas bíblicas',
+                            style: theme.textTheme.labelMedium?.copyWith(
+                              color: theme.colorScheme.primary,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Expanded(
+                            child: SingleChildScrollView(
+                              child: SelectableText.rich(
+                                _buildHighlightedPreview(previewText),
+                                style: theme.textTheme.bodyMedium?.copyWith(
+                                  height: 1.5,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  : const SizedBox.shrink();
+              final editorField = Expanded(
+                child: TextField(
+                  controller: widget.textController,
+                  expands: true,
+                  maxLines: null,
+                  minLines: null,
+                  textAlignVertical: TextAlignVertical.top,
+                  decoration: const InputDecoration(
+                    border: OutlineInputBorder(),
+                    alignLabelWithHint: true,
+                  ),
+                ),
+              );
+
+              return SizedBox(
+                height: 320,
+                child: useSplit
+                    ? Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(child: previewPanel),
+                          const SizedBox(width: 12),
+                          editorField,
+                        ],
+                      )
+                    : Column(
+                        children: [
+                          if (_showPreview) ...[
+                            SizedBox(height: 180, child: previewPanel),
+                            const SizedBox(height: 12),
+                          ],
+                          editorField,
+                        ],
+                      ),
+              );
+            },
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: Wrap(
+                  spacing: 12,
+                  runSpacing: 8,
+                  children: [
+                    Text(
+                      '$charCount caracteres',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant),
+                    ),
+                    Text(
+                      previewText.trim().isEmpty || !_showPreview
+                          ? '0 citas resaltadas'
+                          : previewLabel,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant),
+                    ),
+                  ],
+                ),
+              ),
+              OutlinedButton(
+                onPressed: widget.onBack,
+                child: const Text('Atrás'),
+              ),
+              const SizedBox(width: 8),
+              FilledButton.icon(
+                onPressed: charCount > 0 ? widget.onContinue : null,
+                icon: const Icon(Icons.arrow_forward, size: 18),
+                label: const Text('Continuar'),
+              ),
+            ],
+          ),
+        ],
+        ),
+      ),
+    );
+  }
+}
+
+// ============================================================
+// Step 4 — Detect References
+// ============================================================
+
+class _DetectRefsStep extends StatelessWidget {
+  const _DetectRefsStep({
+    required this.charCount,
+    required this.groupedRefs,
+    required this.detectionDuration,
+    required this.onBack,
+    required this.onContinue,
+  });
+  final int charCount;
+  final List<({String reference, int count})> groupedRefs;
+  final Duration? detectionDuration;
+  final VoidCallback onBack;
+  final VoidCallback? onContinue;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDetecting = detectionDuration == null;
+    if (isDetecting) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    return Padding(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            groupedRefs.isEmpty
+                ? 'No se encontraron citas'
+                : '¡Encontramos ${groupedRefs.length} citas!',
+            style: theme.textTheme.titleLarge,
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Se han detectado posibles citas bíblicas.',
+            style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant),
+          ),
+          const SizedBox(height: 16),
+          Expanded(
+            child: groupedRefs.isEmpty
+                ? Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.search_off_rounded,
+                            size: 48,
+                            color: theme.colorScheme.onSurfaceVariant),
+                        const SizedBox(height: 12),
+                        Text('Sin citas bíblicas detectadas.',
+                            style: theme.textTheme.bodyMedium),
+                      ],
+                    ),
+                  )
+                : LayoutBuilder(
+                    builder: (context, constraints) {
+                      final wide = constraints.maxWidth >= 400;
+                      return wide
+                          ? Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Expanded(
+                                    flex: 3,
+                                    child: _RefCountList(
+                                        refs: groupedRefs)),
+                                const SizedBox(width: 16),
+                                Expanded(
+                                    flex: 2,
+                                    child: _AnalysisSummaryCard(
+                                      charCount: charCount,
+                                      refCount: groupedRefs.length,
+                                      duration: detectionDuration!,
+                                    )),
+                              ],
+                            )
+                          : Column(
+                              children: [
+                                _AnalysisSummaryCard(
+                                  charCount: charCount,
+                                  refCount: groupedRefs.length,
+                                  duration: detectionDuration!,
+                                ),
+                                const SizedBox(height: 12),
+                                Expanded(
+                                    child: _RefCountList(
+                                        refs: groupedRefs)),
+                              ],
+                            );
+                    },
+                  ),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              OutlinedButton(onPressed: onBack, child: const Text('Atrás')),
+              const Spacer(),
+              FilledButton.icon(
+                onPressed: onContinue,
+                icon: const Icon(Icons.arrow_forward, size: 18),
+                label: const Text('Continuar'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RefCountList extends StatelessWidget {
+  const _RefCountList({required this.refs});
+  final List<({String reference, int count})> refs;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return ListView.separated(
+      itemCount: refs.length,
+      separatorBuilder: (_, _) => const Divider(height: 1),
+      itemBuilder: (context, i) {
+        final ref = refs[i];
+        return ListTile(
+          dense: true,
+          title: Text(ref.reference, style: theme.textTheme.bodyMedium),
+          trailing: ref.count > 1 ? Badge.count(count: ref.count) : null,
+        );
+      },
+    );
+  }
+}
+
+class _AnalysisSummaryCard extends StatelessWidget {
+  const _AnalysisSummaryCard({
+    required this.charCount,
+    required this.refCount,
+    required this.duration,
+  });
+  final int charCount;
+  final int refCount;
+  final Duration duration;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Card(
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Resumen del análisis',
+                style: theme.textTheme.titleSmall),
+            const SizedBox(height: 12),
+            _SummaryRow(
+              icon: Icons.text_snippet_outlined,
+              label: 'Texto analizado',
+              value: '$charCount caracteres',
+            ),
+            const SizedBox(height: 8),
+            _SummaryRow(
+              icon: Icons.menu_book_outlined,
+              label: 'Citas encontradas',
+              value: '$refCount',
+            ),
+            const SizedBox(height: 8),
+            _SummaryRow(
+              icon: Icons.timer_outlined,
+              label: 'Tiempo de análisis',
+              value: duration.inMilliseconds < 1000
+                  ? '${duration.inMilliseconds}ms'
+                  : '${(duration.inMilliseconds / 1000).toStringAsFixed(1)}s',
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SummaryRow extends StatelessWidget {
+  const _SummaryRow(
+      {required this.icon, required this.label, required this.value});
+  final IconData icon;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Row(
+      children: [
+        Icon(icon, size: 16, color: theme.colorScheme.primary),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(label,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant)),
+              Text(value,
+                  style: theme.textTheme.bodySmall
+                      ?.copyWith(fontWeight: FontWeight.bold)),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ============================================================
+// Step 5 — Explore References
+// ============================================================
+
+class _ExploreRefsStep extends StatelessWidget {
+  const _ExploreRefsStep({
+    required this.groupedRefs,
+    required this.currentRefIndex,
+    required this.activeReference,
+    required this.bibleText,
+    required this.bibleMessage,
+    required this.loadingBibleText,
+    required this.selectedBibleVersionId,
+    required this.copiedFeedbackVisible,
+    required this.isDesktop,
+    required this.onRefSelected,
+    required this.onNavigate,
+    required this.onBibleVersionChanged,
+    required this.onCopyBibleText,
+    required this.onBack,
+    required this.onContinue,
+  });
+
+  final List<({String reference, int count})> groupedRefs;
+  final int currentRefIndex;
+  final String? activeReference;
+  final String? bibleText;
+  final String bibleMessage;
+  final bool loadingBibleText;
+  final int selectedBibleVersionId;
+  final bool copiedFeedbackVisible;
+  final bool isDesktop;
+  final void Function(String, int) onRefSelected;
+  final ValueChanged<int> onNavigate;
+  final ValueChanged<int?> onBibleVersionChanged;
+  final VoidCallback onCopyBibleText;
+  final VoidCallback onBack;
+  final VoidCallback onContinue;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        children: [
+          // Header row
+          Row(
+            children: [
+              Expanded(
+                child: Row(
+                  children: [
+                    if (activeReference != null)
+                      Flexible(
+                        child: Text(
+                          activeReference!,
+                          style: theme.textTheme.titleLarge?.copyWith(
+                            color: theme.colorScheme.primary,
+                            fontWeight: FontWeight.bold,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    const SizedBox(width: 8),
+                    DropdownButtonHideUnderline(
+                      child: DropdownButton<int>(
+                        value: selectedBibleVersionId,
+                        isDense: true,
+                        style: theme.textTheme.titleSmall,
+                        items: kSupportedBibleVersions
+                            .where((v) => v.enabled)
+                            .map(
+                              (v) => DropdownMenuItem<int>(
+                                value: v.id,
+                                child: Text(v.code),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: onBibleVersionChanged,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              IconButton.filledTonal(
+                onPressed: bibleText != null ? onCopyBibleText : null,
+                tooltip: 'Copiar versículo',
+                icon: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 220),
+                  child: copiedFeedbackVisible
+                      ? const Icon(
+                          key: ValueKey('check'),
+                          Icons.check_circle,
+                          color: Colors.green,
+                        )
+                      : const Icon(
+                          key: ValueKey('copy'),
+                          Icons.content_copy_outlined,
+                        ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          // Content area
+          Expanded(
+            child: isDesktop
+                ? Row(
+                    children: [
+                      SizedBox(
+                        width: 180,
+                        child: _RefListPanel(
+                          refs: groupedRefs,
+                          currentIndex: currentRefIndex,
+                          onSelect: onRefSelected,
+                        ),
+                      ),
+                      const VerticalDivider(width: 16),
+                      Expanded(
+                        child: _VersePanel(
+                          bibleText: bibleText,
+                          bibleMessage: bibleMessage,
+                          loading: loadingBibleText,
+                        ),
+                      ),
+                    ],
+                  )
+                : Column(
+                    children: [
+                      Expanded(
+                        child: _VersePanel(
+                          bibleText: bibleText,
+                          bibleMessage: bibleMessage,
+                          loading: loadingBibleText,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        height: 56,
+                        child: _RefChipsPanel(
+                          refs: groupedRefs,
+                          currentIndex: currentRefIndex,
+                          onSelect: onRefSelected,
+                        ),
+                      ),
+                    ],
+                  ),
+          ),
+          const SizedBox(height: 10),
+          // Navigation + action row
+          Row(
+            children: [
+              OutlinedButton(onPressed: onBack, child: const Text('Atrás')),
+              const SizedBox(width: 8),
+              IconButton(
+                icon: const Icon(Icons.chevron_left),
+                onPressed: currentRefIndex > 0 ? () => onNavigate(-1) : null,
+              ),
+              SizedBox(
+                width: 96,
+                child: Text(
+                  '${currentRefIndex + 1} de ${groupedRefs.length}',
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.bodySmall,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.chevron_right),
+                onPressed: currentRefIndex < groupedRefs.length - 1
+                    ? () => onNavigate(1)
+                    : null,
+              ),
+              const SizedBox(width: 8),
+              FilledButton.icon(
+                onPressed: onContinue,
+                icon: const Icon(Icons.check, size: 18),
+                label: const Text('Finalizar'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RefListPanel extends StatelessWidget {
+  const _RefListPanel({
+    required this.refs,
+    required this.currentIndex,
+    required this.onSelect,
+  });
+  final List<({String reference, int count})> refs;
+  final int currentIndex;
+  final void Function(String, int) onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return ListView.builder(
+      itemCount: refs.length,
+      itemBuilder: (context, i) {
+        final ref = refs[i];
+        final isActive = i == currentIndex;
+        return ListTile(
+          dense: true,
+          selected: isActive,
+          selectedColor: theme.colorScheme.primary,
+          selectedTileColor: theme.colorScheme.primaryContainer
+              .withValues(alpha: 0.3),
+          title: Text(ref.reference, style: theme.textTheme.bodySmall),
+          onTap: () => onSelect(ref.reference, i),
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8)),
+        );
+      },
+    );
+  }
+}
+
+class _RefChipsPanel extends StatelessWidget {
+  const _RefChipsPanel({
+    required this.refs,
+    required this.currentIndex,
+    required this.onSelect,
+  });
+  final List<({String reference, int count})> refs;
+  final int currentIndex;
+  final void Function(String, int) onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView.separated(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+      itemCount: refs.length,
+      separatorBuilder: (_, _) => const SizedBox(width: 8),
+      itemBuilder: (context, i) {
+        final ref = refs[i];
+        final isActive = i == currentIndex;
+        return FilterChip(
+          selected: isActive,
+          label: Text(ref.reference),
+          onSelected: (_) => onSelect(ref.reference, i),
+        );
+      },
+    );
+  }
+}
+
+class _VersePanel extends StatelessWidget {
+  const _VersePanel({
+    required this.bibleText,
+    required this.bibleMessage,
+    required this.loading,
+  });
+  final String? bibleText;
+  final String bibleMessage;
+  final bool loading;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    if (loading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    final text = bibleText;
+    return Container(
+      width: double.infinity,
+      height: double.infinity,
+      margin: EdgeInsets.zero,
+      padding: EdgeInsets.zero,
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerLow,
+      ),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: text != null
+            ? Text(
+                '"$text"',
+                style: theme.textTheme.bodyLarge?.copyWith(
+                  fontStyle: FontStyle.italic,
+                  fontSize: 18,
+                  fontFamily: 'Times New Roman',
+                  fontFamilyFallback: const ['Times', 'Noto Serif', 'serif'],
+                  height: 1.6,
+                ),
+              )
+            : Text(
+                bibleMessage,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+      ),
+    );
+  }
+}
+
+// ============================================================
+// Step 6 — Finish
+// ============================================================
+
+class _FinishStep extends StatelessWidget {
+  const _FinishStep({
+    required this.refCount,
+    required this.savedToHistory,
+    required this.completedAction,
+    required this.includeBibleTextInOutput,
+    required this.exportDirectoryPath,
+    required this.onSaveToHistory,
+    required this.onCopyReferences,
+    required this.onShareResult,
+    required this.onExportText,
+    required this.onToggleIncludeBibleText,
+    required this.onNewScan,
+  });
+  final int refCount;
+  final bool savedToHistory;
+  final _FinishAction completedAction;
+  final bool includeBibleTextInOutput;
+  final String? exportDirectoryPath;
+  final VoidCallback onSaveToHistory;
+  final VoidCallback onCopyReferences;
+  final VoidCallback onShareResult;
+  final VoidCallback onExportText;
+  final ValueChanged<bool> onToggleIncludeBibleText;
+  final VoidCallback onNewScan;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        children: [
+          const SizedBox(height: 24),
+          Container(
+            width: 80,
+            height: 80,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: Colors.green.shade100,
+            ),
+            child: Icon(Icons.check_circle_rounded,
+                color: Colors.green.shade700, size: 52),
+          ),
+          const SizedBox(height: 20),
+          Text('¡Escaneo completado!',
+              style: theme.textTheme.headlineSmall),
+          const SizedBox(height: 8),
+          Text(
+            'Se encontraron $refCount citas bíblicas.',
+            style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant),
+          ),
+          const SizedBox(height: 24),
+          SwitchListTile.adaptive(
+            contentPadding: EdgeInsets.zero,
+            value: includeBibleTextInOutput,
+            onChanged: onToggleIncludeBibleText,
+            title: const Text('Incluir texto bíblico en resultados'),
+            subtitle: const Text('Se añadirá el texto bíblico de cada cita cuando sea posible.'),
+          ),
+          if (exportDirectoryPath != null && exportDirectoryPath!.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              'Carpeta exportación: $exportDirectoryPath',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+          const SizedBox(height: 24),
+          _FinishCard(
+            icon: Icons.save_outlined,
+            title: 'Guardar en historial',
+            subtitle: savedToHistory
+                ? 'Guardado correctamente.'
+                : 'Guarda este resultado para consultarlo después.',
+            onTap: savedToHistory ? null : onSaveToHistory,
+            trailing: savedToHistory
+                ? Icon(Icons.check_circle, color: Colors.green.shade600)
+                : null,
+          ),
+          const SizedBox(height: 12),
+          _FinishCard(
+            icon: Icons.copy_outlined,
+            title: 'Copiar citas',
+            subtitle: 'Copia solo las citas bíblicas encontradas y su texto bíblico si está activado.',
+            onTap: onCopyReferences,
+            trailing: completedAction == _FinishAction.copiedCitations
+                ? Icon(Icons.check_circle, color: Colors.green.shade600)
+                : null,
+          ),
+          const SizedBox(height: 12),
+          _FinishCard(
+            icon: Icons.share_outlined,
+            title: 'Copiar resultado escaneado',
+            subtitle: 'Copia solo el texto escaneado y su texto bíblico si está activado.',
+            onTap: onShareResult,
+            trailing: completedAction == _FinishAction.copiedScannedResult
+                ? Icon(Icons.check_circle, color: Colors.green.shade600)
+                : null,
+          ),
+          const SizedBox(height: 12),
+          _FinishCard(
+            icon: Icons.download_outlined,
+            title: 'Exportar texto',
+            subtitle: 'Exporta el texto escaneado con citas y texto bíblico opcional en un archivo .txt.',
+            onTap: onExportText,
+            trailing: completedAction == _FinishAction.exported
+                ? Icon(Icons.check_circle, color: Colors.green.shade600)
+                : null,
+          ),
+          const SizedBox(height: 24),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: onNewScan,
+              icon: const Icon(Icons.restart_alt_outlined),
+              label: const Text('Nuevo escaneo'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FinishCard extends StatelessWidget {
+  const _FinishCard({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+    this.trailing,
+  });
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback? onTap;
+  final Widget? trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Card(
+      margin: EdgeInsets.zero,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          child: Row(
+            children: [
+              Icon(icon, color: theme.colorScheme.primary, size: 28),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, style: theme.textTheme.titleSmall),
+                    Text(
+                      subtitle,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant),
+                    ),
+                  ],
+                ),
+              ),
+              if (trailing != null) trailing!,
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }

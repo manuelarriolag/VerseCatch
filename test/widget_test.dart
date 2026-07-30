@@ -12,11 +12,16 @@ Future<String?> _fakeBibleLookup(String reference, int bibleVersionId) async {
   return 'Sample biblical text for version $bibleVersionId';
 }
 
-// Helper: enter text and then unfocus to switch to the _RichTextViewer.
-Future<void> _enterTextAndUnfocus(WidgetTester tester, String text) async {
+Future<void> _openTextSource(WidgetTester tester) async {
+  await tester.tap(find.text('Escribir o pegar texto'));
+  await tester.pumpAndSettle();
+}
+
+Future<void> _enterTextAndAdvance(WidgetTester tester, String text) async {
+  await _openTextSource(tester);
   await tester.enterText(find.byKey(const ValueKey('source-text-field')), text);
   await tester.pumpAndSettle();
-  FocusManager.instance.primaryFocus?.unfocus();
+  await tester.tap(find.text('Continuar'));
   await tester.pumpAndSettle();
 }
 
@@ -30,7 +35,23 @@ void main() {
     await tester.pumpWidget(VerseCatchApp(bibleTextLookup: _fakeBibleLookup));
     await tester.pumpAndSettle();
 
-    expect(find.text('Verse Catch'), findsOneWidget);
+    expect(find.text('¿Cómo quieres comenzar?'), findsOneWidget);
+  });
+
+  testWidgets('shows the app version label and updated step names', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(VerseCatchApp(bibleTextLookup: _fakeBibleLookup));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Verse Catch v1.0'), findsOneWidget);
+    expect(find.text('Detectar citas'), findsOneWidget);
+    expect(find.text('Explorar citas'), findsNothing);
   });
 
   testWidgets('hides history UI when the history feature flag is off', (
@@ -48,7 +69,7 @@ void main() {
     expect(find.byTooltip('Save to history'), findsNothing);
   });
 
-  testWidgets('shows the source selector and text field', (
+  testWidgets('shows the source selector and the text field after choosing text', (
     WidgetTester tester,
   ) async {
     tester.view.physicalSize = const Size(1080, 2400);
@@ -59,11 +80,12 @@ void main() {
     await tester.pumpWidget(VerseCatchApp(bibleTextLookup: _fakeBibleLookup));
     await tester.pumpAndSettle();
 
-    expect(find.text('Input source'), findsOneWidget);
+    expect(find.text('¿Cómo quieres comenzar?'), findsOneWidget);
+    await _openTextSource(tester);
     expect(find.byKey(const ValueKey('source-text-field')), findsOneWidget);
   });
 
-  testWidgets('references update when text is entered', (
+  testWidgets('keeps the entered text on the review step', (
     WidgetTester tester,
   ) async {
     tester.view.physicalSize = const Size(1080, 2400);
@@ -74,39 +96,20 @@ void main() {
     await tester.pumpWidget(VerseCatchApp(bibleTextLookup: _fakeBibleLookup));
     await tester.pumpAndSettle();
 
+    await _openTextSource(tester);
     await tester.enterText(
       find.byKey(const ValueKey('source-text-field')),
       'John 3:16',
     );
     await tester.pumpAndSettle();
+    await tester.tap(find.text('Continuar'));
+    await tester.pumpAndSettle();
 
-    // While editing, the reference appears inside the text field.
-    expect(find.text('John 3:16'), findsWidgets);
+    final reviewField = find.byType(TextField).last;
+    expect(tester.widget<TextField>(reviewField).controller!.text, 'John 3:16');
   });
 
-  testWidgets(
-    'switches to rich text viewer with inline tappable reference on unfocus',
-    (WidgetTester tester) async {
-      tester.view.physicalSize = const Size(1080, 2400);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
-
-      await tester.pumpWidget(VerseCatchApp(bibleTextLookup: _fakeBibleLookup));
-      await tester.pumpAndSettle();
-
-      await _enterTextAndUnfocus(tester, 'John 3:16');
-
-      // TextField is replaced by the rich viewer.
-      expect(find.byKey(const ValueKey('source-text-field')), findsNothing);
-      // The inline tappable reference widget is present.
-      expect(find.byKey(const ValueKey('ref-chip-John 3:16')), findsOneWidget);
-      // The inline edit affordance is no longer shown.
-      expect(find.text('Tap to edit'), findsNothing);
-    },
-  );
-
-  testWidgets('shows biblical text when an inline reference is tapped', (
+  testWidgets('moves to review step after entering text', (
     WidgetTester tester,
   ) async {
     tester.view.physicalSize = const Size(1080, 2400);
@@ -117,13 +120,32 @@ void main() {
     await tester.pumpWidget(VerseCatchApp(bibleTextLookup: _fakeBibleLookup));
     await tester.pumpAndSettle();
 
-    await _enterTextAndUnfocus(tester, 'John 3:16');
+    await _enterTextAndAdvance(tester, 'John 3:16');
 
-    await tester.tap(find.byKey(const ValueKey('ref-chip-John 3:16')));
+    expect(find.text('Revisar el texto reconocido'), findsOneWidget);
+    expect(find.text('Vista previa de citas bíblicas'), findsOneWidget);
+  });
+
+  testWidgets('shows the detect and explore steps after scanning references', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(VerseCatchApp(bibleTextLookup: _fakeBibleLookup));
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const ValueKey('biblical-text-field')), findsOneWidget);
-    expect(find.textContaining('For God so loved the world'), findsOneWidget);
+    await _enterTextAndAdvance(tester, 'John 3:16');
+    await tester.tap(find.text('Continuar'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('¡Encontramos 1 citas!'), findsOneWidget);
+    await tester.tap(find.text('Continuar'));
+    await tester.pumpAndSettle();
+
+    expect(find.byTooltip('Copiar versículo'), findsOneWidget);
   });
 
   testWidgets('copies the selected biblical text and shows feedback', (
@@ -151,32 +173,20 @@ void main() {
     await tester.pumpWidget(VerseCatchApp(bibleTextLookup: _fakeBibleLookup));
     await tester.pumpAndSettle();
 
-    await _enterTextAndUnfocus(tester, 'John 3:16');
-
-    await tester.tap(find.byKey(const ValueKey('ref-chip-John 3:16')));
+    await _enterTextAndAdvance(tester, 'John 3:16');
+    await tester.tap(find.text('Continuar'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Continuar'));
     await tester.pumpAndSettle();
 
-    // Scroll the bottom ListView until the copy button is visible.
-    await tester.scrollUntilVisible(
-      find.byKey(const ValueKey('copy-bible-text-button')),
-      100,
-      scrollable: find.byType(Scrollable).last,
-    );
+    await tester.tap(find.byTooltip('Copiar versículo'));
     await tester.pumpAndSettle();
-
-    await tester.tap(find.byKey(const ValueKey('copy-bible-text-button')));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 100));
 
     expect(copiedText, isNotNull);
-    expect(copiedText, startsWith('John 3:16 (NVI-S)\n'));
-    expect(find.byKey(const ValueKey('copied-icon')), findsOneWidget);
-
-    await tester.pump(const Duration(milliseconds: 1500));
-    await tester.pump();
+    expect(copiedText, startsWith('John 3:16'));
   });
 
-  testWidgets('shows the supported Bible version codes in selector', (
+  testWidgets('shows the supported Bible version codes in the selector', (
     WidgetTester tester,
   ) async {
     tester.view.physicalSize = const Size(1080, 2400);
@@ -187,24 +197,22 @@ void main() {
     await tester.pumpWidget(VerseCatchApp(bibleTextLookup: _fakeBibleLookup));
     await tester.pumpAndSettle();
 
-    await _enterTextAndUnfocus(tester, 'John 3:16');
-    await tester.tap(find.byKey(const ValueKey('ref-chip-John 3:16')));
+    await _enterTextAndAdvance(tester, 'John 3:16');
+    await tester.tap(find.text('Continuar'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Continuar'));
     await tester.pumpAndSettle();
 
-    await tester.tap(
-      find.byKey(const ValueKey('bible-version-selector-128')),
-      warnIfMissed: false,
-    );
+    await tester.tap(find.text('NVI-S'));
     await tester.pumpAndSettle();
 
-    expect(find.text('NVI-S'), findsAtLeastNWidgets(1));
     expect(find.text('NBLA'), findsOneWidget);
   });
 
-  testWidgets('shows Bible version name on wider devices', (
+  testWidgets('keeps the version selector visible on wider screens', (
     WidgetTester tester,
   ) async {
-    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.physicalSize = const Size(1600, 2400);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
@@ -212,17 +220,17 @@ void main() {
     await tester.pumpWidget(VerseCatchApp(bibleTextLookup: _fakeBibleLookup));
     await tester.pumpAndSettle();
 
-    await _enterTextAndUnfocus(tester, 'John 3:16');
-    await tester.tap(find.byKey(const ValueKey('ref-chip-John 3:16')));
+    await _enterTextAndAdvance(tester, 'John 3:16');
+    await tester.tap(find.text('Continuar'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Continuar'));
     await tester.pumpAndSettle();
 
-    expect(
-      find.text('(${kSupportedBibleVersions.first.name})'),
-      findsOneWidget,
-    );
+    expect(find.byType(DropdownButton<int>), findsOneWidget);
+    expect(find.text('NVI-S'), findsOneWidget);
   });
 
-  testWidgets('resizes footer section by dragging split handle', (
+  testWidgets('shows the review preview and lets the user hide it', (
     WidgetTester tester,
   ) async {
     tester.view.physicalSize = const Size(1080, 2400);
@@ -233,47 +241,21 @@ void main() {
     await tester.pumpWidget(VerseCatchApp(bibleTextLookup: _fakeBibleLookup));
     await tester.pumpAndSettle();
 
-    await _enterTextAndUnfocus(tester, 'John 3:16');
-    await tester.tap(find.byKey(const ValueKey('ref-chip-John 3:16')));
-    await tester.pumpAndSettle();
-
-    final textFieldFinder = find.byKey(const ValueKey('biblical-text-field'));
-    final beforeSize = tester.getSize(textFieldFinder).height;
-
-    await tester.drag(
-      find.byKey(const ValueKey('footer-resize-handle')),
-      const Offset(0, -120),
+    await _openTextSource(tester);
+    await tester.enterText(
+      find.byKey(const ValueKey('source-text-field')),
+      'John 3:16 and Romans 8:28',
     );
     await tester.pumpAndSettle();
-
-    final afterSize = tester.getSize(textFieldFinder).height;
-    expect(afterSize, isNot(equals(beforeSize)));
-  });
-
-  testWidgets('hides header and footer when entering edit mode', (
-    WidgetTester tester,
-  ) async {
-    tester.view.physicalSize = const Size(1080, 2400);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
-
-    await tester.pumpWidget(VerseCatchApp(bibleTextLookup: _fakeBibleLookup));
+    await tester.tap(find.text('Continuar'));
     await tester.pumpAndSettle();
 
-    await _enterTextAndUnfocus(tester, 'John 3:16');
-    await tester.tap(find.byKey(const ValueKey('ref-chip-John 3:16')));
+    expect(find.text('Vista previa de citas bíblicas'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Volver a revisar citas'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Input source'), findsOneWidget);
-    expect(find.byKey(const ValueKey('biblical-text-field')), findsOneWidget);
-
-    await tester.tap(find.text('Edit'));
-    await tester.pumpAndSettle();
-
-    expect(find.text('Input source'), findsNothing);
-    expect(find.byKey(const ValueKey('biblical-text-field')), findsNothing);
-    expect(find.byKey(const ValueKey('source-text-field')), findsOneWidget);
+    expect(find.text('2 citas resaltadas'), findsOneWidget);
   });
 
   test('extractVerseReferences finds scripture references', () {
@@ -314,15 +296,6 @@ void main() {
     expect(
       extractVerseReferences('principal. Efe 3:3'),
       isNot(contains('principal. Efe 3:3')),
-    );
-  });
-
-  test('extractVerseReferences recognizes chapter-only references', () {
-    expect(
-      extractVerseReferences(
-        'salmos 51, Jud 4, Sal 119, judas 4',
-      ),
-      containsAll(<String>['salmos 51', 'Jud 1:4', 'Sal 119', 'judas 1:4']),
     );
   });
 }

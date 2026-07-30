@@ -1,0 +1,16 @@
+# HANDOFF
+
+## Cambios aplicados
+- Se implementó una nueva UI basada en wizard para la captura y revisión del texto.
+- Se añadió una vista previa del paso 3 que resalta visualmente las citas bíblicas detectadas en el texto ingresado, usando un estilo magenta con fondo claro.
+- El botón de vista previa ahora usa solo el icono y vuelve a ejecutar la detección de citas bíblicas solo cuando el usuario lo solicita, evitando resaltar mientras se escribe.
+- Se añadió un contador inferior con el total de citas resaltadas y el número de caracteres, adaptado para no desbordar en pantallas pequeñas.
+- Se unificó la terminología a "cita bíblica" en textos y mensajes del wizard.
+- Se incorporó la versión de la app en el título como "Verse Catch v1.0".
+- El paso 6 ahora permite incluir texto bíblico en los resultados, persistir esa preferencia y exportar a una carpeta y nombre personalizados con selección real de carpeta.
+- El paso 5 ahora alinea el botón de copia a la derecha y ajusta la navegación inferior para pantallas pequeñas.
+- El paso 6 ahora ofrece copiado animado y feedback visual para citas, resultado escaneado y exportación, con contenido de portapapeles específico para cada acción.
+
+## Decisiones de alto impacto
+- 2026-07-29 00:00: Se decidió mantener el resaltado únicamente en la pantalla de revisión y no durante la edición en vivo para reducir ruido visual y preservar la experiencia de escritura.
+- 2026-07-29 00:00: Se decidió usar un estilo magenta discreto con fondo claro para que el resaltado sea visible sin competir con el contenido principal.
