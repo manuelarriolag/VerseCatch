@@ -70,11 +70,44 @@ const List<BibleVersionOption> kSupportedBibleVersions = [
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  _validateMasterBookAliasesOrThrow();
   if (!kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
     sqfliteFfiInit();
     databaseFactory = databaseFactoryFfi;
   }
   runApp(const VerseCatchApp());
+}
+
+void _validateMasterBookAliasesOrThrow() {
+  final ownerByAlias = <String, String>{};
+  final sourceByAlias = <String, String>{};
+  final collisions = <String>[];
+
+  for (final entry in _kMasterBookKeys.entries) {
+    final usfmBook = entry.key;
+    for (final alias in entry.value.aliases) {
+      final normalizedAlias = _normalizeBookAlias(alias);
+      final existingOwner = ownerByAlias[normalizedAlias];
+      if (existingOwner == null) {
+        ownerByAlias[normalizedAlias] = usfmBook;
+        sourceByAlias[normalizedAlias] = alias;
+        continue;
+      }
+      if (existingOwner == usfmBook) continue;
+
+      final firstAlias = sourceByAlias[normalizedAlias] ?? normalizedAlias;
+      collisions.add(
+        'Alias "$firstAlias" (normalized: "$normalizedAlias") is assigned to both '
+        '$existingOwner and $usfmBook.',
+      );
+    }
+  }
+
+  if (collisions.isNotEmpty) {
+    throw StateError(
+      'Duplicate book aliases detected in _kMasterBookKeys:\n${collisions.join('\n')}',
+    );
+  }
 }
 
 String buildProcessingStatusLabel({
@@ -2161,10 +2194,7 @@ Future<String?> lookupBibleTextFromYouVersion(
   ).firstMatch(reference.trim());
   if (match == null) return null;
 
-  final book = _canonicalBookKey(match.group(1)!);
-  final usfmBook =
-      _kUsfmBookCodeByBookKey[book] ??
-      _kUsfmBookCodeByBookKey[_normalizeBookKey(match.group(1)!)];
+  final usfmBook = _resolveUsfmBookCode(match.group(1)!);
   if (usfmBook == null) {
     throw YouVersionApiException(
       'Unsupported biblical book for remote lookup: ${match.group(1)}',
@@ -2173,9 +2203,7 @@ Future<String?> lookupBibleTextFromYouVersion(
   var chapter = match.group(2)!;
   var verse = match.group(3);
   final verseEnd = match.group(4);
-  if (verse == null &&
-      _kSingleChapterBookKeys.contains(book) &&
-      int.parse(chapter) > 1) {
+  if (verse == null && _isSingleChapterUsfmBook(usfmBook) && int.parse(chapter) > 1) {
     verse = chapter;
     chapter = '1';
   }
@@ -2310,378 +2338,151 @@ String? formatBibleTextForDisplay({required String content}) {
 }
 
 String _normalizeBookKey(String book) {
-  return book.trim().toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '');
+  final lower = book.trim().toLowerCase();
+  final ascii = lower
+      .replaceAll('á', 'a')
+      .replaceAll('é', 'e')
+      .replaceAll('í', 'i')
+      .replaceAll('ó', 'o')
+      .replaceAll('ú', 'u')
+      .replaceAll('ü', 'u')
+      .replaceAll('ñ', 'n');
+  return ascii.replaceAll(RegExp(r'[^a-z0-9]+'), '');
 }
 
 bool _isKnownBiblicalBook(String book) {
-  final normalized = _normalizeBookKey(book);
-  return _kKnownBibleBooks.contains(normalized);
+  return _resolveUsfmBookCode(book) != null;
 }
 
-String _canonicalBookKey(String book) {
-  final normalized = _normalizeBookKey(book);
-  switch (normalized) {
-    case '1cor':
-    case '1corinthians':
-      return '1cor';
-    case '2cor':
-    case '2corinthians':
-      return '2cor';
-    case 'john':
-    case 'jhn':
-      return 'john';
-    case 'romans':
-    case 'rom':
-      return 'romans';
-    case 'philippians':
-    case 'phil':
-      return 'philippians';
-    case 'psalm':
-    case 'psalms':
-    case 'salmos':
-    case 'sal':
-    case 'ps':
-      return 'psalm';
-    case 'proverbs':
-    case 'prov':
-      return 'proverbs';
-    case 'jeremiah':
-    case 'jer':
-      return 'jeremiah';
-    case 'isaiah':
-    case 'isa':
-      return 'isaiah';
-    case 'joshua':
-    case 'josh':
-      return 'joshua';
-    case 'matthew':
-    case 'matt':
-      return 'matthew';
-    case 'ephesians':
-    case 'eph':
-    case 'efe':
-    case 'efesios':
-      return 'ephesians';
-    case 'judas':
-    default:
-      return normalized;
+String _normalizeBookAlias(String book) {
+  var normalized = _normalizeBookKey(book);
+  normalized = normalized.replaceFirst(RegExp(r'^primer(?=[a-z])'), '1');
+  normalized = normalized.replaceFirst(RegExp(r'^primero(?=[a-z])'), '1');
+  normalized = normalized.replaceFirst(RegExp(r'^primera(?=[a-z])'), '1');
+  normalized = normalized.replaceFirst(RegExp(r'^first(?=[a-z])'), '1');
+  normalized = normalized.replaceFirst(RegExp(r'^segundo(?=[a-z])'), '2');
+  normalized = normalized.replaceFirst(RegExp(r'^segunda(?=[a-z])'), '2');
+  normalized = normalized.replaceFirst(RegExp(r'^second(?=[a-z])'), '2');
+  normalized = normalized.replaceFirst(RegExp(r'^tercer(?=[a-z])'), '3');
+  normalized = normalized.replaceFirst(RegExp(r'^tercero(?=[a-z])'), '3');
+  normalized = normalized.replaceFirst(RegExp(r'^tercera(?=[a-z])'), '3');
+  normalized = normalized.replaceFirst(RegExp(r'^third(?=[a-z])'), '3');
+  normalized = normalized.replaceFirst(RegExp(r'^iii(?=[a-z])'), '3');
+  normalized = normalized.replaceFirst(RegExp(r'^ii(?=[a-z])'), '2');
+  normalized = normalized.replaceFirst(RegExp(r'^i(?=[a-z])'), '1');
+  return normalized;
+}
+
+final Map<String, String> _kUsfmBookCodeByAlias = () {
+  final result = <String, String>{};
+  for (final entry in _kMasterBookKeys.entries) {
+    result[_normalizeBookAlias(entry.key)] = entry.key;
+    for (final alias in entry.value.aliases) {
+      result[_normalizeBookAlias(alias)] = entry.key;
+    }
   }
+  return result;
+}();
+
+String? _resolveUsfmBookCode(String book) {
+  return _kUsfmBookCodeByAlias[_normalizeBookAlias(book)];
+}
+
+bool _isSingleChapterUsfmBook(String usfmBookCode) {
+  final book = _kMasterBookKeys[usfmBookCode];
+  return book?.singleChapter ?? false;
 }
 
 String _normalizeChapterOnlyReference({
   required String book,
   required String chapterOrVerse,
 }) {
-  final canonicalBook = _canonicalBookKey(book);
-  if (_kSingleChapterBookKeys.contains(canonicalBook)) {
+  final usfmBookCode = _resolveUsfmBookCode(book);
+  if (usfmBookCode != null && _isSingleChapterUsfmBook(usfmBookCode)) {
     return '$book 1:$chapterOrVerse';
   }
   return '$book $chapterOrVerse';
 }
 
-const Set<String> _kKnownBibleBooks = {
-  'genesis',
-  'gen',
-  'exodus',
-  'exo',
-  'leviticus',
-  'lev',
-  'numbers',
-  'num',
-  'deuteronomy',
-  'deut',
-  'joshua',
-  'josh',
-  'judges',
-  'judg',
-  'ruth',
-  'rut',
-  '1samuel',
-  '1sam',
-  '2samuel',
-  '2sam',
-  '1kings',
-  '1kng',
-  '2kings',
-  '2kng',
-  '1chronicles',
-  '1chr',
-  '2chronicles',
-  '2chr',
-  'ezra',
-  'ezr',
-  'nehemiah',
-  'neh',
-  'esther',
-  'est',
-  'job',
-  'psalm',
-  'psalms',
-  'salmos',
-  'sal',
-  'ps',
-  'proverbs',
-  'prov',
-  'ecclesiastes',
-  'eccl',
-  'songofsolomon',
-  'song',
-  'isaiah',
-  'isa',
-  'jeremiah',
-  'jer',
-  'lamentations',
-  'lam',
-  'ezekiel',
-  'ezek',
-  'daniel',
-  'dan',
-  'hosea',
-  'hos',
-  'hch',
-  'joel',
-  'jol',
-  'amos',
-  'am',
-  'obadiah',
-  'obad',
-  'jonah',
-  'jon',
-  'micah',
-  'mic',
-  'nahum',
-  'nah',
-  'habakkuk',
-  'hab',
-  'zephaniah',
-  'zep',
-  'haggai',
-  'hag',
-  'zechariah',
-  'zech',
-  'malachi',
-  'mal',
-  'matthew',
-  'matt',
-  'mark',
-  'mrk',
-  'mt',
-  'luke',
-  'luk',
-  'lc',
-  'john',
-  'jhn',
-  'acts',
-  'romans',
-  'rom',
-  '1cor',
-  '1corinthians',
-  '2cor',
-  '2corinthians',
-  'cor',
-  'galatians',
-  'gal',
-  'ephesians',
-  'eph',
-  'efe',
-  'efesios',
-  'philippians',
-  'phil',
-  'colossians',
-  'col',
-  '1thessalonians',
-  '1thes',
-  '2thessalonians',
-  '2thes',
-  'tes',
-  '1tes',
-  '2tes',
-  '1timothy',
-  '1tim',
-  '2timothy',
-  '2tim',
-  'titus',
-  'tit',
-  'tim',
-  'philemon',
-  'phm',
-  'hebrews',
-  'heb',
-  'james',
-  'jam',
-  '1peter',
-  '1pet',
-  '2peter',
-  '2pet',
-  '1john',
-  '1jn',
-  '2john',
-  '2jn',
-  '3john',
-  '3jn',
-  'jude',
-  'jud',
-  'judas',
-  'revelation',
-  'rev',
-};
-
-const _kUsfmBookCodeByBookKey = <String, String>{
-  'genesis': 'GEN',
-  'gen': 'GEN',
-  'exodus': 'EXO',
-  'exo': 'EXO',
-  'leviticus': 'LEV',
-  'lev': 'LEV',
-  'numbers': 'NUM',
-  'num': 'NUM',
-  'deuteronomy': 'DEU',
-  'deut': 'DEU',
-  'joshua': 'JOS',
-  'josh': 'JOS',
-  'judges': 'JDG',
-  'judg': 'JDG',
-  'ruth': 'RUT',
-  'rut': 'RUT',
-  '1samuel': '1SA',
-  '1sam': '1SA',
-  '2samuel': '2SA',
-  '2sam': '2SA',
-  '1kings': '1KI',
-  '1kng': '1KI',
-  '2kings': '2KI',
-  '2kng': '2KI',
-  '1chronicles': '1CH',
-  '1chr': '1CH',
-  '2chronicles': '2CH',
-  '2chr': '2CH',
-  'ezra': 'EZR',
-  'ezr': 'EZR',
-  'nehemiah': 'NEH',
-  'neh': 'NEH',
-  'esther': 'EST',
-  'est': 'EST',
-  'job': 'JOB',
-  'psalm': 'PSA',
-  'psalms': 'PSA',
-  'salmos': 'PSA',
-  'sal': 'PSA',
-  'ps': 'PSA',
-  'proverbs': 'PRO',
-  'prov': 'PRO',
-  'ecclesiastes': 'ECC',
-  'eccl': 'ECC',
-  'songofsolomon': 'SNG',
-  'song': 'SNG',
-  'isaiah': 'ISA',
-  'isa': 'ISA',
-  'jeremiah': 'JER',
-  'jer': 'JER',
-  'lamentations': 'LAM',
-  'lam': 'LAM',
-  'ezekiel': 'EZK',
-  'ezek': 'EZK',
-  'daniel': 'DAN',
-  'dan': 'DAN',
-  'hosea': 'HOS',
-  'hos': 'HOS',
-  'joel': 'JOL',
-  'jol': 'JOL',
-  'amos': 'AMO',
-  'am': 'AMO',
-  'obadiah': 'OBA',
-  'obad': 'OBA',
-  'jonah': 'JON',
-  'jon': 'JON',
-  'micah': 'MIC',
-  'mic': 'MIC',
-  'nahum': 'NAM',
-  'nah': 'NAM',
-  'habakkuk': 'HAB',
-  'hab': 'HAB',
-  'zephaniah': 'ZEP',
-  'zep': 'ZEP',
-  'haggai': 'HAG',
-  'hag': 'HAG',
-  'zechariah': 'ZEC',
-  'zech': 'ZEC',
-  'malachi': 'MAL',
-  'mal': 'MAL',
-  'matthew': 'MAT',
-  'matt': 'MAT',
-  'mark': 'MRK',
-  'mrk': 'MRK',
-  'mt': 'MAT',
-  'luke': 'LUK',
-  'luk': 'LUK',
-  'lc': 'LUK',
-  'john': 'JHN',
-  'jhn': 'JHN',
-  'acts': 'ACT',
-  'hch': 'ACT',
-  'romans': 'ROM',
-  'rom': 'ROM',
-  '1cor': '1CO',
-  '1corinthians': '1CO',
-  '2cor': '2CO',
-  '2corinthians': '2CO',
-  'galatians': 'GAL',
-  'gal': 'GAL',
-  'ephesians': 'EPH',
-  'eph': 'EPH',
-  'efe': 'EPH',
-  'efesios': 'EPH',
-  'philippians': 'PHP',
-  'phil': 'PHP',
-  'colossians': 'COL',
-  'col': 'COL',
-  '1thessalonians': '1TH',
-  '1thes': '1TH',
-  '1tes': '1TH',
-  '2thessalonians': '2TH',
-  '2thes': '2TH',
-  '2tes': '2TH',
-  '1timothy': '1TI',
-  '1tim': '1TI',
-  '2timothy': '2TI',
-  '2tim': '2TI',
-  'titus': 'TIT',
-  'tit': 'TIT',
-  'philemon': 'PHM',
-  'phm': 'PHM',
-  'hebrews': 'HEB',
-  'heb': 'HEB',
-  'james': 'JAS',
-  'jam': 'JAS',
-  '1peter': '1PE',
-  '1pet': '1PE',
-  '2peter': '2PE',
-  '2pet': '2PE',
-  '1john': '1JN',
-  '1jn': '1JN',
-  '2john': '2JN',
-  '2jn': '2JN',
-  '3john': '3JN',
-  '3jn': '3JN',
-  'jude': 'JUD',
-  'jud': 'JUD',
-  'judas': 'JUD',
-  'revelation': 'REV',
-  'rev': 'REV',
-};
-
-const Set<String> _kSingleChapterBookKeys = {
-  'obadiah',
-  'obad',
-  'philemon',
-  'phm',
-  '2john',
-  '2jn',
-  '3john',
-  '3jn',
-  'jude',
-  'jud',
-  'judas',
+const _kMasterBookKeys = <String, ({Set<String> aliases, bool singleChapter})>{
+  'GEN': (aliases: {'Genesis', 'Gen', 'Gn', 'Ge'}, singleChapter: false),
+  'EXO': (aliases: {'Exodus', 'Exo', 'Exodo', 'Ex'}, singleChapter: false),
+  'LEV': (aliases: {'Leviticus', 'Lev', 'Levitico', 'Lv', 'Le'}, singleChapter: false),
+  'NUM': (aliases: {'Numbers', 'Num', 'Numeros', 'Nm', 'Nu'}, singleChapter: false),
+  'DEU': (aliases: {'Deuteronomy', 'Deut', 'Deuteronomio', 'Dt', 'De', 'Deu'}, singleChapter: false),
+  'JOS': (aliases: {'Joshua', 'Josh', 'Josue', 'Jos', 'Js'}, singleChapter: false),
+  'JDG': (aliases: {'Judges', 'Judg', 'Jueces', 'Jue', 'Jc', 'Ju'}, singleChapter: false),
+  'RUT': (aliases: {'Ruth', 'Rut', 'Ru', 'Rt'}, singleChapter: false),
+  '1SA':
+    (aliases: {'1 Samuel', '1Sam', '1Samuel', 'I Samuel', 'Primero Samuel', 'Primero de Samuel', '1 Sam', '1 Sm'}, singleChapter: false),
+  '2SA':
+    (aliases: {'2 Samuel', '2Sam', '2Samuel', 'II Samuel', 'Segundo Samuel', 'Segundo de Samuel', '2 Sam', '2 Sm'}, singleChapter: false),
+  '1KI':
+    (aliases: {'1 Kings', '1Kng', '1Kings', '1 Reyes', 'I Reyes', 'Primero Reyes', 'Primero de Reyes', '1 Rey', '1 Ry'}, singleChapter: false),
+  '2KI':
+    (aliases: {'2 Kings', '2Kng', '2Kings', '2 Reyes', 'II Reyes', 'Segundo Reyes', 'Segundo de Reyes', '2 Rey', '2 Ry'}, singleChapter: false),
+  '1CH':
+    (aliases: {'1 Chronicles', '1Chr', '1Chronicles', '1 Cronicas', 'I Cronicas', 'Primero Cronicas', 'Primero de Cronicas', '1 Cro', '1 Cr'}, singleChapter: false),
+  '2CH':
+    (aliases: {'2 Chronicles', '2Chr', '2Chronicles', '2 Cronicas', 'II Cronicas', 'Segundo Cronicas', 'Segundo de Cronicas', '2 Cro', '2 Cr'}, singleChapter: false),
+  'EZR': (aliases: {'Ezra', 'Ezr', 'Esdras', 'Esd', 'Ez'}, singleChapter: false),
+  'NEH': (aliases: {'Nehemiah', 'Neh', 'Nehemias', 'Nehm', 'Ne'}, singleChapter: false),
+  'EST': (aliases: {'Esther', 'Est', 'Ester', 'Et'}, singleChapter: false),
+  'JOB': (aliases: {'Job', 'Jb'}, singleChapter: false),
+  'PSA': (aliases: {'Psalms', 'Psalm', 'Salmos', 'Salmo', 'Sal', 'Ps'}, singleChapter: false),
+  'PRO': (aliases: {'Proverbs', 'Prov', 'Proverbios', 'Pr', 'Prv', 'Pro'}, singleChapter: false),
+  'ECC': (aliases: {'Ecclesiastes', 'Eccl', 'Eclesiastes', 'Ecl', 'Ec'}, singleChapter: false),
+  'SNG':
+    (aliases: {'Song of Solomon', 'Song', 'SongOfSolomon', 'Cantar', 'Cantares', 'Cnt', 'Ca', 'Can'}, singleChapter: false),
+  'ISA': (aliases: {'Isaiah', 'Isa', 'Isaias', 'Is'}, singleChapter: false),
+  'JER': (aliases: {'Jeremiah', 'Jer', 'Jeremias', 'Je', 'Jr'}, singleChapter: false),
+  'LAM': (aliases: {'Lamentations', 'Lam', 'Lamentaciones', 'La'}, singleChapter: false),
+  'EZK': (aliases: {'Ezekiel', 'Ezek', 'Ezequiel', 'Eze'}, singleChapter: false),
+  'DAN': (aliases: {'Daniel', 'Dan', 'Da', 'Dn'}, singleChapter: false),
+  'HOS': (aliases: {'Hosea', 'Hos', 'Oseas', 'Os', 'Ose'}, singleChapter: false),
+  'JOL': (aliases: {'Joel', 'Jol', 'Jl'}, singleChapter: false),
+  'AMO': (aliases: {'Amos', 'Am', 'Amo'}, singleChapter: false),
+  'OBA': (aliases: {'Obadiah', 'Obad', 'Abdias', 'Abd', 'Ab'}, singleChapter: true),
+  'JON': (aliases: {'Jonah', 'Jon', 'Jonas', 'Jo'}, singleChapter: false),
+  'MIC': (aliases: {'Micah', 'Mic', 'Miqueas', 'Miq', 'Mi'}, singleChapter: false),
+  'NAM': (aliases: {'Nahum', 'Nah', 'Naum', 'Na', 'Nau'}, singleChapter: false),
+  'HAB': (aliases: {'Habakkuk', 'Hab', 'Habacuc', 'Hb'}, singleChapter: false),
+  'ZEP': (aliases: {'Zephaniah', 'Zep', 'Ze', 'Sofonias', 'So', 'Sof', 'Sf'}, singleChapter: false),
+  'HAG': (aliases: {'Haggai', 'Hag', 'Ha', 'Hg', 'Hageo'}, singleChapter: false),
+  'ZEC': (aliases: {'Zechariah', 'Zech', 'Zacarias', 'Zac', 'Za'}, singleChapter: false),
+  'MAL': (aliases: {'Malachi', 'Mal', 'Ml', 'Mala', 'Mq'}, singleChapter: false),
+  'MAT': (aliases: {'Matthew', 'Matt', 'Mt', 'Mateo', 'Mat', 'Ma'}, singleChapter: false),
+  'MRK': (aliases: {'Mark', 'Mrk', 'Marcos', 'Mc', 'Mr', 'Mar', 'Marc'}, singleChapter: false),
+  'LUK': (aliases: {'Luke', 'Luk', 'Lc', 'Lucas', 'Luc'}, singleChapter: false),
+  'JHN': (aliases: {'John', 'Jhn', 'Juan', 'Jn', 'Jua'}, singleChapter: false),
+  'ACT': (aliases: {'Acts', 'Hch', 'Hechos', 'Hc'}, singleChapter: false),
+  'ROM': (aliases: {'Romans', 'Rom', 'Romanos', 'Ro', 'Rm'}, singleChapter: false),
+  '1CO':
+    (aliases: {'1 Corinthians', '1Cor', '1Corinthians', '1 Corintios', 'I Corintios', 'Primera Corintios', 'Primera de Corintios', '1 Cor', '1 Co'}, singleChapter: false),
+  '2CO':
+    (aliases: {'2 Corinthians', '2Cor', '2Corinthians', '2 Corintios', 'II Corintios', 'Segunda Corintios', 'Segunda de Corintios', '2 Cor', '2 Co'}, singleChapter: false),
+  'GAL': (aliases: {'Galatians', 'Gal', 'Galatas', 'Ga', 'Gl'}, singleChapter: false),
+  'EPH':
+    (aliases: {'Ephesians', 'Eph', 'Efe', 'Efesios', 'Ef'}, singleChapter: false),
+  'PHP': (aliases: {'Philippians', 'Phil', 'Filipenses', 'Flp', 'Fi', 'Fil'}, singleChapter: false),
+  'COL': (aliases: {'Colossians', 'Col', 'Colosenses', 'Co'}, singleChapter: false),
+  '1TH':
+    (aliases: {'1 Thessalonians', '1Thes', '1Tes', '1Thessalonians', '1 Tesalonicenses', 'I Tesalonicenses', 'Primera Tesalonicenses', 'Primera de Tesalonicenses', '1 Tes', '1 Ts'}, singleChapter: false),
+  '2TH':
+    (aliases: {'2 Thessalonians', '2Thes', '2Tes', '2Thessalonians', '2 Tesalonicenses', 'II Tesalonicenses', 'Segunda Tesalonicenses', 'Segunda de Tesalonicenses', '2 Tes', '2 Ts'}, singleChapter: false),
+  '1TI': (aliases: {'1 Timothy', '1Tim', '1Timothy', '1 Timoteo', 'I Timoteo', 'Primera Timoteo', 'Primera de Timoteo', '1 Tim', '1Tm'}, singleChapter: false),
+  '2TI': (aliases: {'2 Timothy', '2Tim', '2Timothy', '2 Timoteo', 'II Timoteo', 'Segunda Timoteo', 'Segunda de Timoteo', '2 Tim', '2Tm'}, singleChapter: false),
+  'TIT': (aliases: {'Titus', 'Tit', 'Tito', 'Ti'}, singleChapter: false),
+  'PHM': (aliases: {'Philemon', 'Phm', 'Filemon', 'Flm'}, singleChapter: true),
+  'HEB': (aliases: {'Hebrews', 'Heb', 'Hebreos', 'He'}, singleChapter: false),
+  'JAS': (aliases: {'James', 'Jam', 'Santiago', 'Stg'}, singleChapter: false),
+  '1PE': (aliases: {'1 Peter', '1Pet', '1Peter', '1 Pedro', 'I Pedro', 'Primera Pedro', 'Primera de Pedro'}, singleChapter: false),
+  '2PE': (aliases: {'2 Peter', '2Pet', '2Peter', '2 Pedro', 'II Pedro', 'Segunda Pedro', 'Segunda de Pedro'}, singleChapter: false),
+  '1JN': (aliases: {'1 John', '1Jn', '1John', '1 Juan', 'I Juan', 'Primera Juan', 'Primera de Juan'}, singleChapter: false),
+  '2JN': (aliases: {'2 John', '2Jn', '2John', '2 Juan', 'II Juan', 'Segunda Juan', 'Segunda de Juan'}, singleChapter: true),
+  '3JN': (aliases: {'3 John', '3Jn', '3John', '3 Juan', 'III Juan', 'Tercera Juan', 'Tercera de Juan'}, singleChapter: true),
+  'JUD': (aliases: {'Jude', 'Jud', 'Judas', 'Juda', 'Jd'}, singleChapter: true),
+  'REV': (aliases: {'Revelation', 'Rev', 'Apocalipsis', 'Apoc', 'Ap', 'Apo'}, singleChapter: false),
 };
 
 String _joinApiPath(String basePath, String suffix) {
