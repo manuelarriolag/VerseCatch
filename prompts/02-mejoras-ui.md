@@ -31,6 +31,13 @@
 
 - [x] TG4. Cambia el icono del botón "Nuevo escaneo" por uno que parezca "reset" o "ir al inicio", se me ocurre algo parecido a esto "|<-".
 
+## Paso 2. Obtener texto
+
+- [x] T2.1. Si en el paso previo se eligió la opción "Elegir una imagen", se muestra la pantalla "Selecciona una imagen", aplica los siguientes cambios:
+  - [x] T2.1.1. Si el usuario hace click/tap sobre el marco que tiene el texto "Sin imagen" que se ejecute la misma acción del botón "Elegir imagen".
+  - [x] T2.1.2. Cuando ya se eligió una imagen, se reemplaza el marco que antes decia "Sin imagen" por la imagen selecionada, esto es correcto, ahora debemos mostrar la imágen completa con funciones para hacer zoom y mover la imagen que permitan visualizarla.
+  - [x] T2.1.3. Como se describe en T2.1.2, hace falta un botón para continuar, ya que si el usuario llega a esta pantalla usando el botón "Atrás" ya no hay forma de continuar.
+
 ## Paso 3. Revisar texto
 
 - [x] T3.1. Quiero que el texto reconocido por el OCR (o el que haya pegado o escrito el usuario), muestre resaltadas en color magenta las citas bìblicas encontradas, pero este paso 3 no sustituye al paso 4, solo es un previo que ayudará al usuario a identificar visualmente las citas y si detecta alguna no resaltada que pueda ajustarla.
@@ -72,4 +79,5 @@
 - 2026-07-29 00:00: Se decidió usar un estilo magenta suave con fondo claro para que las citas resaltadas sean visibles sin saturar la interfaz.
 - 2026-08-08 20:13: Se decidió permitir navegación directa a cualquiera de los seis pasos desde los indicadores de móvil y escritorio, conservando el contenido y estado capturados; al entrar en Explorar citas se recarga el texto bíblico cuando existe una cita activa.
 - 2026-08-08 20:22: Se restringió la navegación directa del header a los pasos ya concluidos mediante el flujo normal; esta regla sustituye la navegación irrestricta registrada a las 20:13 y evita omitir pasos futuros. "Nuevo escaneo" limpia también el registro de pasos concluidos.
+- 2026-08-09 11:16: Se separó la selección de imagen del procesamiento OCR: elegir o cambiar una imagen conserva al usuario en el paso 2 para previsualizarla con zoom y desplazamiento, y el OCR solo inicia al presionar "Continuar".
 

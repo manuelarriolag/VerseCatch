@@ -116,6 +116,43 @@ void main() {
     expect(find.text('Vista previa'), findsOneWidget);
   });
 
+  testWidgets(
+    'selects, zooms, and continues with an image from the empty frame',
+    (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(1080, 2400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      await tester.pumpWidget(
+        VerseCatchApp(
+          bibleTextLookup: _fakeBibleLookup,
+          imageFilePicker: () async => 'assets/images/banner_demo.png',
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Elegir una imagen'));
+      await tester.pumpAndSettle();
+      expect(find.text('Sin imagen'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('continue-selected-image')),
+        findsNothing,
+      );
+
+      await tester.tap(find.byKey(const ValueKey('empty-image-picker')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      expect(find.byType(InteractiveViewer), findsOneWidget);
+      final continueButton = find.byKey(
+        const ValueKey('continue-selected-image'),
+      );
+      expect(continueButton, findsOneWidget);
+      expect(tester.widget<FilledButton>(continueButton).onPressed, isNotNull);
+    },
+  );
+
   testWidgets('moves to review step after entering text', (
     WidgetTester tester,
   ) async {
@@ -133,7 +170,7 @@ void main() {
     expect(find.text('Vista previa de citas bíblicas'), findsOneWidget);
   });
 
-  testWidgets('shows the detect and explore steps after scanning references', (
+  testWidgets('shows detect, explore, and finish after scanning references', (
     WidgetTester tester,
   ) async {
     tester.view.physicalSize = const Size(1080, 2400);
@@ -153,6 +190,19 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byTooltip('Copiar versículo'), findsOneWidget);
+    await tester.tap(find.text('Finalizar'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Exportar texto'), findsNothing);
+    final newScanButton = find.widgetWithText(FilledButton, 'Nuevo escaneo');
+    expect(newScanButton, findsOneWidget);
+    expect(
+      find.descendant(
+        of: newScanButton,
+        matching: find.byIcon(Icons.first_page_rounded),
+      ),
+      findsOneWidget,
+    );
   });
 
   testWidgets('copies the selected biblical text and shows feedback', (

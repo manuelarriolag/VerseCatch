@@ -13,9 +13,11 @@
 - Los indicadores de los seis pasos son interactivos en móvil y escritorio únicamente para volver a pasos ya concluidos mediante el flujo normal; los pasos futuros permanecen deshabilitados.
 - El botón "Nuevo escaneo" usa un icono de ir al inicio (`first_page`) en el header móvil y el panel lateral de escritorio.
 - El paso 3 separa por completo los modos de vista previa y edición; inicia en vista previa y el botón alterna explícitamente entre "Editar" y "Vista previa".
+- En el paso 2, el marco "Sin imagen" abre el selector, la imagen elegida se muestra completa dentro de un `InteractiveViewer` y un botón "Continuar" separado inicia el OCR.
 
 ## Decisiones de alto impacto
 - 2026-07-29 00:00: Se decidió mantener el resaltado únicamente en la pantalla de revisión y no durante la edición en vivo para reducir ruido visual y preservar la experiencia de escritura.
 - 2026-07-29 00:00: Se decidió usar un estilo magenta discreto con fondo claro para que el resaltado sea visible sin competir con el contenido principal.
 - 2026-08-08 20:13: Se decidió permitir navegación directa a cualquiera de los seis pasos desde los indicadores de móvil y escritorio, conservando el contenido y estado capturados; al entrar en Explorar citas se recarga el texto bíblico cuando existe una cita activa.
 - 2026-08-08 20:22: Se restringió la navegación directa del header a los pasos ya concluidos mediante el flujo normal; esta regla sustituye la navegación irrestricta registrada a las 20:13 y evita omitir pasos futuros. "Nuevo escaneo" limpia también el registro de pasos concluidos.
+- 2026-08-09 11:16: Se separó la selección de imagen del procesamiento OCR: elegir o cambiar una imagen conserva al usuario en el paso 2 para previsualizarla con zoom y desplazamiento, y el OCR solo inicia al presionar "Continuar".

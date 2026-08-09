@@ -19,8 +19,10 @@ enum InputSource { text, image, camera }
 
 typedef BibleTextLookup =
     Future<String?> Function(String reference, int bibleVersionId);
+typedef ImageFilePicker = Future<String?> Function();
 
 const bool kEnableHistoryFeature = false;
+const bool kEnableTextExport = false;
 const bool kShowBanner = false;
 const String kAppTitle = 'Verse Catch';
 const String kAppVersionLabel = 'v1.0';
@@ -67,6 +69,11 @@ const List<BibleVersionOption> kSupportedBibleVersions = [
   ),
   BibleVersionOption(id: 3291, code: 'VBL', name: 'Biblia Libre'),
 ];
+
+Future<String?> pickImageFileFromDevice() async {
+  final result = await FilePicker.pickFiles(type: FileType.image);
+  return result?.files.single.path;
+}
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -261,9 +268,11 @@ class VerseCatchApp extends StatelessWidget {
   const VerseCatchApp({
     super.key,
     this.bibleTextLookup = lookupBibleTextFromYouVersion,
+    this.imageFilePicker = pickImageFileFromDevice,
   });
 
   final BibleTextLookup bibleTextLookup;
+  final ImageFilePicker imageFilePicker;
 
   @override
   Widget build(BuildContext context) {
@@ -274,7 +283,10 @@ class VerseCatchApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo),
         useMaterial3: true,
       ),
-      home: WizardHomePage(bibleTextLookup: bibleTextLookup),
+      home: WizardHomePage(
+        bibleTextLookup: bibleTextLookup,
+        imageFilePicker: imageFilePicker,
+      ),
     );
   }
 }
@@ -3069,8 +3081,13 @@ extension _WizardStepLabel on _WizardStep {
 // ============================================================
 
 class WizardHomePage extends StatefulWidget {
-  const WizardHomePage({super.key, required this.bibleTextLookup});
+  const WizardHomePage({
+    super.key,
+    required this.bibleTextLookup,
+    required this.imageFilePicker,
+  });
   final BibleTextLookup bibleTextLookup;
+  final ImageFilePicker imageFilePicker;
 
   @override
   State<WizardHomePage> createState() => _WizardHomePageState();
@@ -3884,14 +3901,15 @@ class _WizardHomePageState extends State<WizardHomePage> {
   }
 
   Future<void> _pickImage() async {
-    final result = await FilePicker.pickFiles(type: FileType.image);
-    if (result == null) return;
-    final path = result.files.single.path;
+    final path = await widget.imageFilePicker();
     if (path == null) return;
-    setState(() {
-      _processing = true;
-      _imagePath = path;
-    });
+    setState(() => _imagePath = path);
+  }
+
+  Future<void> _processSelectedImage() async {
+    final path = _imagePath;
+    if (path == null || !File(path).existsSync()) return;
+    setState(() => _processing = true);
     try {
       _textController.text = await _runOcr(path);
       _advanceToReview();
@@ -4073,6 +4091,7 @@ class _WizardHomePageState extends State<WizardHomePage> {
         history: _history,
         onPickFile: _pickTextFile,
         onPickImage: _pickImage,
+        onContinueImage: _processSelectedImage,
         onOpenCamera: _openCamera,
         onContinueText: _advanceToReview,
         onHistorySelect: (r) {
@@ -4596,6 +4615,7 @@ class _AcquireContentStep extends StatelessWidget {
     required this.history,
     required this.onPickFile,
     required this.onPickImage,
+    required this.onContinueImage,
     required this.onOpenCamera,
     required this.onContinueText,
     required this.onHistorySelect,
@@ -4607,6 +4627,7 @@ class _AcquireContentStep extends StatelessWidget {
   final List<CaptureRecord> history;
   final VoidCallback onPickFile;
   final VoidCallback onPickImage;
+  final VoidCallback onContinueImage;
   final VoidCallback onOpenCamera;
   final VoidCallback onContinueText;
   final ValueChanged<CaptureRecord> onHistorySelect;
@@ -4626,6 +4647,7 @@ class _AcquireContentStep extends StatelessWidget {
         imagePath: imagePath,
         processing: processing,
         onPickImage: onPickImage,
+        onContinue: onContinueImage,
       ),
       _WizardSource.camera => _CameraLoadingContent(processing: processing),
       _WizardSource.history => _HistoryListContent(
@@ -4750,10 +4772,12 @@ class _ImagePickerContent extends StatelessWidget {
     required this.imagePath,
     required this.processing,
     required this.onPickImage,
+    required this.onContinue,
   });
   final String? imagePath;
   final bool processing;
   final VoidCallback onPickImage;
+  final VoidCallback onContinue;
 
   @override
   Widget build(BuildContext context) {
@@ -4767,41 +4791,59 @@ class _ImagePickerContent extends StatelessWidget {
           Text('Selecciona una imagen', style: theme.textTheme.titleMedium),
           const SizedBox(height: 16),
           if (hasImage)
-            ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: Image.file(
-                File(imagePath!),
-                width: double.infinity,
-                height: 220,
-                fit: BoxFit.cover,
-              ),
-            )
-          else
             Container(
-              height: 180,
+              key: const ValueKey('selected-image-preview'),
+              height: 360,
+              clipBehavior: Clip.antiAlias,
               decoration: BoxDecoration(
-                color: theme.colorScheme.surfaceContainerHighest.withValues(
-                  alpha: 0.4,
-                ),
+                color: theme.colorScheme.surfaceContainerHighest,
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: theme.colorScheme.outlineVariant),
               ),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.image_outlined,
-                    size: 48,
-                    color: theme.colorScheme.primary,
+              child: InteractiveViewer(
+                minScale: 1,
+                maxScale: 5,
+                child: Center(
+                  child: Image.file(
+                    File(imagePath!),
+                    width: double.infinity,
+                    height: double.infinity,
+                    fit: BoxFit.contain,
                   ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Sin imagen',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            )
+          else
+            InkWell(
+              key: const ValueKey('empty-image-picker'),
+              onTap: processing ? null : onPickImage,
+              borderRadius: BorderRadius.circular(12),
+              child: Container(
+                height: 180,
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surfaceContainerHighest.withValues(
+                    alpha: 0.4,
+                  ),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: theme.colorScheme.outlineVariant),
+                ),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.image_outlined,
+                      size: 48,
+                      color: theme.colorScheme.primary,
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 8),
+                    Text(
+                      'Sin imagen',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           const SizedBox(height: 16),
@@ -4838,6 +4880,14 @@ class _ImagePickerContent extends StatelessWidget {
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
               ),
+            ),
+          ] else if (hasImage) ...[
+            const SizedBox(height: 12),
+            FilledButton.icon(
+              key: const ValueKey('continue-selected-image'),
+              onPressed: onContinue,
+              icon: const Icon(Icons.arrow_forward, size: 18),
+              label: const Text('Continuar'),
             ),
           ],
         ],
@@ -5831,23 +5881,25 @@ class _FinishStep extends StatelessWidget {
                 ? Icon(Icons.check_circle, color: Colors.green.shade600)
                 : null,
           ),
-          const SizedBox(height: 12),
-          _FinishCard(
-            icon: Icons.download_outlined,
-            title: 'Exportar texto',
-            subtitle:
-                'Exporta el texto escaneado con citas y texto bíblico opcional en un archivo .txt.',
-            onTap: onExportText,
-            trailing: completedAction == _FinishAction.exported
-                ? Icon(Icons.check_circle, color: Colors.green.shade600)
-                : null,
-          ),
+          if (kEnableTextExport) ...[
+            const SizedBox(height: 12),
+            _FinishCard(
+              icon: Icons.download_outlined,
+              title: 'Exportar texto',
+              subtitle:
+                  'Exporta el texto escaneado con citas y texto bíblico opcional en un archivo .txt.',
+              onTap: onExportText,
+              trailing: completedAction == _FinishAction.exported
+                  ? Icon(Icons.check_circle, color: Colors.green.shade600)
+                  : null,
+            ),
+          ],
           const SizedBox(height: 24),
           SizedBox(
             width: double.infinity,
             child: FilledButton.icon(
               onPressed: onNewScan,
-              icon: const Icon(Icons.restart_alt_outlined),
+              icon: const Icon(Icons.first_page_rounded),
               label: const Text('Nuevo escaneo'),
             ),
           ),
