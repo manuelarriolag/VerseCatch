@@ -51,7 +51,7 @@ void main() {
 
     expect(find.text('Verse Catch v1.0'), findsOneWidget);
     expect(find.text('Detectar citas'), findsOneWidget);
-    expect(find.text('Explorar citas'), findsNothing);
+    expect(find.text('Explorar citas'), findsOneWidget);
   });
 
   testWidgets('hides history UI when the history feature flag is off', (
@@ -69,23 +69,24 @@ void main() {
     expect(find.byTooltip('Save to history'), findsNothing);
   });
 
-  testWidgets('shows the source selector and the text field after choosing text', (
-    WidgetTester tester,
-  ) async {
-    tester.view.physicalSize = const Size(1080, 2400);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
+  testWidgets(
+    'shows the source selector and the text field after choosing text',
+    (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(1080, 2400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
 
-    await tester.pumpWidget(VerseCatchApp(bibleTextLookup: _fakeBibleLookup));
-    await tester.pumpAndSettle();
+      await tester.pumpWidget(VerseCatchApp(bibleTextLookup: _fakeBibleLookup));
+      await tester.pumpAndSettle();
 
-    expect(find.text('¿Cómo quieres comenzar?'), findsOneWidget);
-    await _openTextSource(tester);
-    expect(find.byKey(const ValueKey('source-text-field')), findsOneWidget);
-  });
+      expect(find.text('¿Cómo quieres comenzar?'), findsOneWidget);
+      await _openTextSource(tester);
+      expect(find.byKey(const ValueKey('source-text-field')), findsOneWidget);
+    },
+  );
 
-  testWidgets('keeps the entered text on the review step', (
+  testWidgets('keeps the entered text in review edit mode', (
     WidgetTester tester,
   ) async {
     tester.view.physicalSize = const Size(1080, 2400);
@@ -105,8 +106,14 @@ void main() {
     await tester.tap(find.text('Continuar'));
     await tester.pumpAndSettle();
 
-    final reviewField = find.byType(TextField).last;
+    expect(find.byKey(const ValueKey('review-text-field')), findsNothing);
+    await tester.tap(find.text('Editar'));
+    await tester.pumpAndSettle();
+
+    final reviewField = find.byKey(const ValueKey('review-text-field'));
     expect(tester.widget<TextField>(reviewField).controller!.text, 'John 3:16');
+    expect(find.text('Vista previa de citas bíblicas'), findsNothing);
+    expect(find.text('Vista previa'), findsOneWidget);
   });
 
   testWidgets('moves to review step after entering text', (
@@ -230,7 +237,7 @@ void main() {
     expect(find.text('NVI-S'), findsOneWidget);
   });
 
-  testWidgets('shows the review preview and lets the user hide it', (
+  testWidgets('toggles between exclusive review preview and edit modes', (
     WidgetTester tester,
   ) async {
     tester.view.physicalSize = const Size(1080, 2400);
@@ -251,11 +258,52 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Vista previa de citas bíblicas'), findsOneWidget);
+    expect(find.byKey(const ValueKey('review-text-field')), findsNothing);
 
-    await tester.tap(find.byTooltip('Volver a revisar citas'));
+    await tester.tap(find.text('Editar'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Vista previa de citas bíblicas'), findsNothing);
+    expect(find.byKey(const ValueKey('review-text-field')), findsOneWidget);
+
+    await tester.tap(find.text('Vista previa'));
     await tester.pumpAndSettle();
 
     expect(find.text('2 citas resaltadas'), findsOneWidget);
+    expect(find.text('Vista previa de citas bíblicas'), findsOneWidget);
+    expect(find.byKey(const ValueKey('review-text-field')), findsNothing);
+  });
+
+  testWidgets('only navigates to completed steps and resets from the header', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(VerseCatchApp(bibleTextLookup: _fakeBibleLookup));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Revisar texto'));
+    await tester.pumpAndSettle();
+    expect(find.text('¿Cómo quieres comenzar?'), findsOneWidget);
+
+    await _enterTextAndAdvance(tester, 'John 3:16');
+    expect(find.text('Revisar el texto reconocido'), findsOneWidget);
+
+    await tester.tap(find.text('Explorar citas'));
+    await tester.pumpAndSettle();
+    expect(find.text('Revisar el texto reconocido'), findsOneWidget);
+
+    await tester.tap(find.text('Elegir origen'));
+    await tester.pumpAndSettle();
+    expect(find.text('¿Cómo quieres comenzar?'), findsOneWidget);
+
+    expect(find.byIcon(Icons.first_page_rounded), findsOneWidget);
+    await tester.tap(find.text('Nuevo escaneo'));
+    await tester.pumpAndSettle();
+    expect(find.text('¿Cómo quieres comenzar?'), findsOneWidget);
   });
 
   test('extractVerseReferences finds scripture references', () {

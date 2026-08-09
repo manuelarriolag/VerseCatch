@@ -10,7 +10,12 @@
 - El paso 6 ahora permite incluir texto bíblico en los resultados, persistir esa preferencia y exportar a una carpeta y nombre personalizados con selección real de carpeta.
 - El paso 5 ahora alinea el botón de copia a la derecha y ajusta la navegación inferior para pantallas pequeñas.
 - El paso 6 ahora ofrece copiado animado y feedback visual para citas, resultado escaneado y exportación, con contenido de portapapeles específico para cada acción.
+- Los indicadores de los seis pasos son interactivos en móvil y escritorio únicamente para volver a pasos ya concluidos mediante el flujo normal; los pasos futuros permanecen deshabilitados.
+- El botón "Nuevo escaneo" usa un icono de ir al inicio (`first_page`) en el header móvil y el panel lateral de escritorio.
+- El paso 3 separa por completo los modos de vista previa y edición; inicia en vista previa y el botón alterna explícitamente entre "Editar" y "Vista previa".
 
 ## Decisiones de alto impacto
 - 2026-07-29 00:00: Se decidió mantener el resaltado únicamente en la pantalla de revisión y no durante la edición en vivo para reducir ruido visual y preservar la experiencia de escritura.
 - 2026-07-29 00:00: Se decidió usar un estilo magenta discreto con fondo claro para que el resaltado sea visible sin competir con el contenido principal.
+- 2026-08-08 20:13: Se decidió permitir navegación directa a cualquiera de los seis pasos desde los indicadores de móvil y escritorio, conservando el contenido y estado capturados; al entrar en Explorar citas se recarga el texto bíblico cuando existe una cita activa.
+- 2026-08-08 20:22: Se restringió la navegación directa del header a los pasos ya concluidos mediante el flujo normal; esta regla sustituye la navegación irrestricta registrada a las 20:13 y evita omitir pasos futuros. "Nuevo escaneo" limpia también el registro de pasos concluidos.

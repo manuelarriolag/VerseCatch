@@ -2203,7 +2203,9 @@ Future<String?> lookupBibleTextFromYouVersion(
   var chapter = match.group(2)!;
   var verse = match.group(3);
   final verseEnd = match.group(4);
-  if (verse == null && _isSingleChapterUsfmBook(usfmBook) && int.parse(chapter) > 1) {
+  if (verse == null &&
+      _isSingleChapterUsfmBook(usfmBook) &&
+      int.parse(chapter) > 1) {
     verse = chapter;
     chapter = '1';
   }
@@ -2407,82 +2409,377 @@ String _normalizeChapterOnlyReference({
 const _kMasterBookKeys = <String, ({Set<String> aliases, bool singleChapter})>{
   'GEN': (aliases: {'Genesis', 'Gen', 'Gn', 'Ge'}, singleChapter: false),
   'EXO': (aliases: {'Exodus', 'Exo', 'Exodo', 'Ex'}, singleChapter: false),
-  'LEV': (aliases: {'Leviticus', 'Lev', 'Levitico', 'Lv', 'Le'}, singleChapter: false),
-  'NUM': (aliases: {'Numbers', 'Num', 'Numeros', 'Nm', 'Nu'}, singleChapter: false),
-  'DEU': (aliases: {'Deuteronomy', 'Deut', 'Deuteronomio', 'Dt', 'De', 'Deu'}, singleChapter: false),
-  'JOS': (aliases: {'Joshua', 'Josh', 'Josue', 'Jos', 'Js'}, singleChapter: false),
-  'JDG': (aliases: {'Judges', 'Judg', 'Jueces', 'Jue', 'Jc', 'Ju'}, singleChapter: false),
+  'LEV': (
+    aliases: {'Leviticus', 'Lev', 'Levitico', 'Lv', 'Le'},
+    singleChapter: false,
+  ),
+  'NUM': (
+    aliases: {'Numbers', 'Num', 'Numeros', 'Nm', 'Nu'},
+    singleChapter: false,
+  ),
+  'DEU': (
+    aliases: {'Deuteronomy', 'Deut', 'Deuteronomio', 'Dt', 'De', 'Deu'},
+    singleChapter: false,
+  ),
+  'JOS': (
+    aliases: {'Joshua', 'Josh', 'Josue', 'Jos', 'Js'},
+    singleChapter: false,
+  ),
+  'JDG': (
+    aliases: {'Judges', 'Judg', 'Jueces', 'Jue', 'Jc', 'Ju'},
+    singleChapter: false,
+  ),
   'RUT': (aliases: {'Ruth', 'Rut', 'Ru', 'Rt'}, singleChapter: false),
-  '1SA':
-    (aliases: {'1 Samuel', '1Sam', '1Samuel', 'I Samuel', 'Primero Samuel', 'Primero de Samuel', '1 Sam', '1 Sm'}, singleChapter: false),
-  '2SA':
-    (aliases: {'2 Samuel', '2Sam', '2Samuel', 'II Samuel', 'Segundo Samuel', 'Segundo de Samuel', '2 Sam', '2 Sm'}, singleChapter: false),
-  '1KI':
-    (aliases: {'1 Kings', '1Kng', '1Kings', '1 Reyes', 'I Reyes', 'Primero Reyes', 'Primero de Reyes', '1 Rey', '1 Ry'}, singleChapter: false),
-  '2KI':
-    (aliases: {'2 Kings', '2Kng', '2Kings', '2 Reyes', 'II Reyes', 'Segundo Reyes', 'Segundo de Reyes', '2 Rey', '2 Ry'}, singleChapter: false),
-  '1CH':
-    (aliases: {'1 Chronicles', '1Chr', '1Chronicles', '1 Cronicas', 'I Cronicas', 'Primero Cronicas', 'Primero de Cronicas', '1 Cro', '1 Cr'}, singleChapter: false),
-  '2CH':
-    (aliases: {'2 Chronicles', '2Chr', '2Chronicles', '2 Cronicas', 'II Cronicas', 'Segundo Cronicas', 'Segundo de Cronicas', '2 Cro', '2 Cr'}, singleChapter: false),
-  'EZR': (aliases: {'Ezra', 'Ezr', 'Esdras', 'Esd', 'Ez'}, singleChapter: false),
-  'NEH': (aliases: {'Nehemiah', 'Neh', 'Nehemias', 'Nehm', 'Ne'}, singleChapter: false),
+  '1SA': (
+    aliases: {
+      '1 Samuel',
+      '1Sam',
+      '1Samuel',
+      'I Samuel',
+      'Primero Samuel',
+      'Primero de Samuel',
+      '1 Sam',
+      '1 Sm',
+    },
+    singleChapter: false,
+  ),
+  '2SA': (
+    aliases: {
+      '2 Samuel',
+      '2Sam',
+      '2Samuel',
+      'II Samuel',
+      'Segundo Samuel',
+      'Segundo de Samuel',
+      '2 Sam',
+      '2 Sm',
+    },
+    singleChapter: false,
+  ),
+  '1KI': (
+    aliases: {
+      '1 Kings',
+      '1Kng',
+      '1Kings',
+      '1 Reyes',
+      'I Reyes',
+      'Primero Reyes',
+      'Primero de Reyes',
+      '1 Rey',
+      '1 Ry',
+    },
+    singleChapter: false,
+  ),
+  '2KI': (
+    aliases: {
+      '2 Kings',
+      '2Kng',
+      '2Kings',
+      '2 Reyes',
+      'II Reyes',
+      'Segundo Reyes',
+      'Segundo de Reyes',
+      '2 Rey',
+      '2 Ry',
+    },
+    singleChapter: false,
+  ),
+  '1CH': (
+    aliases: {
+      '1 Chronicles',
+      '1Chr',
+      '1Chronicles',
+      '1 Cronicas',
+      'I Cronicas',
+      'Primero Cronicas',
+      'Primero de Cronicas',
+      '1 Cro',
+      '1 Cr',
+    },
+    singleChapter: false,
+  ),
+  '2CH': (
+    aliases: {
+      '2 Chronicles',
+      '2Chr',
+      '2Chronicles',
+      '2 Cronicas',
+      'II Cronicas',
+      'Segundo Cronicas',
+      'Segundo de Cronicas',
+      '2 Cro',
+      '2 Cr',
+    },
+    singleChapter: false,
+  ),
+  'EZR': (
+    aliases: {'Ezra', 'Ezr', 'Esdras', 'Esd', 'Ez'},
+    singleChapter: false,
+  ),
+  'NEH': (
+    aliases: {'Nehemiah', 'Neh', 'Nehemias', 'Nehm', 'Ne'},
+    singleChapter: false,
+  ),
   'EST': (aliases: {'Esther', 'Est', 'Ester', 'Et'}, singleChapter: false),
   'JOB': (aliases: {'Job', 'Jb'}, singleChapter: false),
-  'PSA': (aliases: {'Psalms', 'Psalm', 'Salmos', 'Salmo', 'Sal', 'Ps'}, singleChapter: false),
-  'PRO': (aliases: {'Proverbs', 'Prov', 'Proverbios', 'Pr', 'Prv', 'Pro'}, singleChapter: false),
-  'ECC': (aliases: {'Ecclesiastes', 'Eccl', 'Eclesiastes', 'Ecl', 'Ec'}, singleChapter: false),
-  'SNG':
-    (aliases: {'Song of Solomon', 'Song', 'SongOfSolomon', 'Cantar', 'Cantares', 'Cnt', 'Ca', 'Can'}, singleChapter: false),
+  'PSA': (
+    aliases: {'Psalms', 'Psalm', 'Salmos', 'Salmo', 'Sal', 'Ps'},
+    singleChapter: false,
+  ),
+  'PRO': (
+    aliases: {'Proverbs', 'Prov', 'Proverbios', 'Pr', 'Prv', 'Pro'},
+    singleChapter: false,
+  ),
+  'ECC': (
+    aliases: {'Ecclesiastes', 'Eccl', 'Eclesiastes', 'Ecl', 'Ec'},
+    singleChapter: false,
+  ),
+  'SNG': (
+    aliases: {
+      'Song of Solomon',
+      'Song',
+      'SongOfSolomon',
+      'Cantar',
+      'Cantares',
+      'Cnt',
+      'Ca',
+      'Can',
+    },
+    singleChapter: false,
+  ),
   'ISA': (aliases: {'Isaiah', 'Isa', 'Isaias', 'Is'}, singleChapter: false),
-  'JER': (aliases: {'Jeremiah', 'Jer', 'Jeremias', 'Je', 'Jr'}, singleChapter: false),
-  'LAM': (aliases: {'Lamentations', 'Lam', 'Lamentaciones', 'La'}, singleChapter: false),
-  'EZK': (aliases: {'Ezekiel', 'Ezek', 'Ezequiel', 'Eze'}, singleChapter: false),
+  'JER': (
+    aliases: {'Jeremiah', 'Jer', 'Jeremias', 'Je', 'Jr'},
+    singleChapter: false,
+  ),
+  'LAM': (
+    aliases: {'Lamentations', 'Lam', 'Lamentaciones', 'La'},
+    singleChapter: false,
+  ),
+  'EZK': (
+    aliases: {'Ezekiel', 'Ezek', 'Ezequiel', 'Eze'},
+    singleChapter: false,
+  ),
   'DAN': (aliases: {'Daniel', 'Dan', 'Da', 'Dn'}, singleChapter: false),
-  'HOS': (aliases: {'Hosea', 'Hos', 'Oseas', 'Os', 'Ose'}, singleChapter: false),
+  'HOS': (
+    aliases: {'Hosea', 'Hos', 'Oseas', 'Os', 'Ose'},
+    singleChapter: false,
+  ),
   'JOL': (aliases: {'Joel', 'Jol', 'Jl'}, singleChapter: false),
   'AMO': (aliases: {'Amos', 'Am', 'Amo'}, singleChapter: false),
-  'OBA': (aliases: {'Obadiah', 'Obad', 'Abdias', 'Abd', 'Ab'}, singleChapter: true),
+  'OBA': (
+    aliases: {'Obadiah', 'Obad', 'Abdias', 'Abd', 'Ab'},
+    singleChapter: true,
+  ),
   'JON': (aliases: {'Jonah', 'Jon', 'Jonas', 'Jo'}, singleChapter: false),
-  'MIC': (aliases: {'Micah', 'Mic', 'Miqueas', 'Miq', 'Mi'}, singleChapter: false),
+  'MIC': (
+    aliases: {'Micah', 'Mic', 'Miqueas', 'Miq', 'Mi'},
+    singleChapter: false,
+  ),
   'NAM': (aliases: {'Nahum', 'Nah', 'Naum', 'Na', 'Nau'}, singleChapter: false),
   'HAB': (aliases: {'Habakkuk', 'Hab', 'Habacuc', 'Hb'}, singleChapter: false),
-  'ZEP': (aliases: {'Zephaniah', 'Zep', 'Ze', 'Sofonias', 'So', 'Sof', 'Sf'}, singleChapter: false),
-  'HAG': (aliases: {'Haggai', 'Hag', 'Ha', 'Hg', 'Hageo'}, singleChapter: false),
-  'ZEC': (aliases: {'Zechariah', 'Zech', 'Zacarias', 'Zac', 'Za'}, singleChapter: false),
-  'MAL': (aliases: {'Malachi', 'Mal', 'Ml', 'Mala', 'Mq'}, singleChapter: false),
-  'MAT': (aliases: {'Matthew', 'Matt', 'Mt', 'Mateo', 'Mat', 'Ma'}, singleChapter: false),
-  'MRK': (aliases: {'Mark', 'Mrk', 'Marcos', 'Mc', 'Mr', 'Mar', 'Marc'}, singleChapter: false),
+  'ZEP': (
+    aliases: {'Zephaniah', 'Zep', 'Ze', 'Sofonias', 'So', 'Sof', 'Sf'},
+    singleChapter: false,
+  ),
+  'HAG': (
+    aliases: {'Haggai', 'Hag', 'Ha', 'Hg', 'Hageo'},
+    singleChapter: false,
+  ),
+  'ZEC': (
+    aliases: {'Zechariah', 'Zech', 'Zacarias', 'Zac', 'Za'},
+    singleChapter: false,
+  ),
+  'MAL': (
+    aliases: {'Malachi', 'Mal', 'Ml', 'Mala', 'Mq'},
+    singleChapter: false,
+  ),
+  'MAT': (
+    aliases: {'Matthew', 'Matt', 'Mt', 'Mateo', 'Mat', 'Ma'},
+    singleChapter: false,
+  ),
+  'MRK': (
+    aliases: {'Mark', 'Mrk', 'Marcos', 'Mc', 'Mr', 'Mar', 'Marc'},
+    singleChapter: false,
+  ),
   'LUK': (aliases: {'Luke', 'Luk', 'Lc', 'Lucas', 'Luc'}, singleChapter: false),
   'JHN': (aliases: {'John', 'Jhn', 'Juan', 'Jn', 'Jua'}, singleChapter: false),
   'ACT': (aliases: {'Acts', 'Hch', 'Hechos', 'Hc'}, singleChapter: false),
-  'ROM': (aliases: {'Romans', 'Rom', 'Romanos', 'Ro', 'Rm'}, singleChapter: false),
-  '1CO':
-    (aliases: {'1 Corinthians', '1Cor', '1Corinthians', '1 Corintios', 'I Corintios', 'Primera Corintios', 'Primera de Corintios', '1 Cor', '1 Co'}, singleChapter: false),
-  '2CO':
-    (aliases: {'2 Corinthians', '2Cor', '2Corinthians', '2 Corintios', 'II Corintios', 'Segunda Corintios', 'Segunda de Corintios', '2 Cor', '2 Co'}, singleChapter: false),
-  'GAL': (aliases: {'Galatians', 'Gal', 'Galatas', 'Ga', 'Gl'}, singleChapter: false),
-  'EPH':
-    (aliases: {'Ephesians', 'Eph', 'Efe', 'Efesios', 'Ef'}, singleChapter: false),
-  'PHP': (aliases: {'Philippians', 'Phil', 'Filipenses', 'Flp', 'Fi', 'Fil'}, singleChapter: false),
-  'COL': (aliases: {'Colossians', 'Col', 'Colosenses', 'Co'}, singleChapter: false),
-  '1TH':
-    (aliases: {'1 Thessalonians', '1Thes', '1Tes', '1Thessalonians', '1 Tesalonicenses', 'I Tesalonicenses', 'Primera Tesalonicenses', 'Primera de Tesalonicenses', '1 Tes', '1 Ts'}, singleChapter: false),
-  '2TH':
-    (aliases: {'2 Thessalonians', '2Thes', '2Tes', '2Thessalonians', '2 Tesalonicenses', 'II Tesalonicenses', 'Segunda Tesalonicenses', 'Segunda de Tesalonicenses', '2 Tes', '2 Ts'}, singleChapter: false),
-  '1TI': (aliases: {'1 Timothy', '1Tim', '1Timothy', '1 Timoteo', 'I Timoteo', 'Primera Timoteo', 'Primera de Timoteo', '1 Tim', '1Tm'}, singleChapter: false),
-  '2TI': (aliases: {'2 Timothy', '2Tim', '2Timothy', '2 Timoteo', 'II Timoteo', 'Segunda Timoteo', 'Segunda de Timoteo', '2 Tim', '2Tm'}, singleChapter: false),
+  'ROM': (
+    aliases: {'Romans', 'Rom', 'Romanos', 'Ro', 'Rm'},
+    singleChapter: false,
+  ),
+  '1CO': (
+    aliases: {
+      '1 Corinthians',
+      '1Cor',
+      '1Corinthians',
+      '1 Corintios',
+      'I Corintios',
+      'Primera Corintios',
+      'Primera de Corintios',
+      '1 Cor',
+      '1 Co',
+    },
+    singleChapter: false,
+  ),
+  '2CO': (
+    aliases: {
+      '2 Corinthians',
+      '2Cor',
+      '2Corinthians',
+      '2 Corintios',
+      'II Corintios',
+      'Segunda Corintios',
+      'Segunda de Corintios',
+      '2 Cor',
+      '2 Co',
+    },
+    singleChapter: false,
+  ),
+  'GAL': (
+    aliases: {'Galatians', 'Gal', 'Galatas', 'Ga', 'Gl'},
+    singleChapter: false,
+  ),
+  'EPH': (
+    aliases: {'Ephesians', 'Eph', 'Efe', 'Efesios', 'Ef'},
+    singleChapter: false,
+  ),
+  'PHP': (
+    aliases: {'Philippians', 'Phil', 'Filipenses', 'Flp', 'Fi', 'Fil'},
+    singleChapter: false,
+  ),
+  'COL': (
+    aliases: {'Colossians', 'Col', 'Colosenses', 'Co'},
+    singleChapter: false,
+  ),
+  '1TH': (
+    aliases: {
+      '1 Thessalonians',
+      '1Thes',
+      '1Tes',
+      '1Thessalonians',
+      '1 Tesalonicenses',
+      'I Tesalonicenses',
+      'Primera Tesalonicenses',
+      'Primera de Tesalonicenses',
+      '1 Tes',
+      '1 Ts',
+    },
+    singleChapter: false,
+  ),
+  '2TH': (
+    aliases: {
+      '2 Thessalonians',
+      '2Thes',
+      '2Tes',
+      '2Thessalonians',
+      '2 Tesalonicenses',
+      'II Tesalonicenses',
+      'Segunda Tesalonicenses',
+      'Segunda de Tesalonicenses',
+      '2 Tes',
+      '2 Ts',
+    },
+    singleChapter: false,
+  ),
+  '1TI': (
+    aliases: {
+      '1 Timothy',
+      '1Tim',
+      '1Timothy',
+      '1 Timoteo',
+      'I Timoteo',
+      'Primera Timoteo',
+      'Primera de Timoteo',
+      '1 Tim',
+      '1Tm',
+    },
+    singleChapter: false,
+  ),
+  '2TI': (
+    aliases: {
+      '2 Timothy',
+      '2Tim',
+      '2Timothy',
+      '2 Timoteo',
+      'II Timoteo',
+      'Segunda Timoteo',
+      'Segunda de Timoteo',
+      '2 Tim',
+      '2Tm',
+    },
+    singleChapter: false,
+  ),
   'TIT': (aliases: {'Titus', 'Tit', 'Tito', 'Ti'}, singleChapter: false),
   'PHM': (aliases: {'Philemon', 'Phm', 'Filemon', 'Flm'}, singleChapter: true),
   'HEB': (aliases: {'Hebrews', 'Heb', 'Hebreos', 'He'}, singleChapter: false),
   'JAS': (aliases: {'James', 'Jam', 'Santiago', 'Stg'}, singleChapter: false),
-  '1PE': (aliases: {'1 Peter', '1Pet', '1Peter', '1 Pedro', 'I Pedro', 'Primera Pedro', 'Primera de Pedro'}, singleChapter: false),
-  '2PE': (aliases: {'2 Peter', '2Pet', '2Peter', '2 Pedro', 'II Pedro', 'Segunda Pedro', 'Segunda de Pedro'}, singleChapter: false),
-  '1JN': (aliases: {'1 John', '1Jn', '1John', '1 Juan', 'I Juan', 'Primera Juan', 'Primera de Juan'}, singleChapter: false),
-  '2JN': (aliases: {'2 John', '2Jn', '2John', '2 Juan', 'II Juan', 'Segunda Juan', 'Segunda de Juan'}, singleChapter: true),
-  '3JN': (aliases: {'3 John', '3Jn', '3John', '3 Juan', 'III Juan', 'Tercera Juan', 'Tercera de Juan'}, singleChapter: true),
+  '1PE': (
+    aliases: {
+      '1 Peter',
+      '1Pet',
+      '1Peter',
+      '1 Pedro',
+      'I Pedro',
+      'Primera Pedro',
+      'Primera de Pedro',
+    },
+    singleChapter: false,
+  ),
+  '2PE': (
+    aliases: {
+      '2 Peter',
+      '2Pet',
+      '2Peter',
+      '2 Pedro',
+      'II Pedro',
+      'Segunda Pedro',
+      'Segunda de Pedro',
+    },
+    singleChapter: false,
+  ),
+  '1JN': (
+    aliases: {
+      '1 John',
+      '1Jn',
+      '1John',
+      '1 Juan',
+      'I Juan',
+      'Primera Juan',
+      'Primera de Juan',
+    },
+    singleChapter: false,
+  ),
+  '2JN': (
+    aliases: {
+      '2 John',
+      '2Jn',
+      '2John',
+      '2 Juan',
+      'II Juan',
+      'Segunda Juan',
+      'Segunda de Juan',
+    },
+    singleChapter: true,
+  ),
+  '3JN': (
+    aliases: {
+      '3 John',
+      '3Jn',
+      '3John',
+      '3 Juan',
+      'III Juan',
+      'Tercera Juan',
+      'Tercera de Juan',
+    },
+    singleChapter: true,
+  ),
   'JUD': (aliases: {'Jude', 'Jud', 'Judas', 'Juda', 'Jd'}, singleChapter: true),
-  'REV': (aliases: {'Revelation', 'Rev', 'Apocalipsis', 'Apoc', 'Ap', 'Apo'}, singleChapter: false),
+  'REV': (
+    aliases: {'Revelation', 'Rev', 'Apocalipsis', 'Apoc', 'Ap', 'Apo'},
+    singleChapter: false,
+  ),
 };
 
 String _joinApiPath(String basePath, String suffix) {
@@ -2758,13 +3055,13 @@ enum _FinishAction {
 
 extension _WizardStepLabel on _WizardStep {
   String get label => switch (this) {
-        _WizardStep.chooseSource => 'Elegir origen',
-        _WizardStep.acquireContent => 'Obtener texto',
-        _WizardStep.reviewText => 'Revisar texto',
-        _WizardStep.detectRefs => 'Detectar citas',
-        _WizardStep.exploreRefs => 'Explorar citas',
-        _WizardStep.finish => 'Guardar',
-      };
+    _WizardStep.chooseSource => 'Elegir origen',
+    _WizardStep.acquireContent => 'Obtener texto',
+    _WizardStep.reviewText => 'Revisar texto',
+    _WizardStep.detectRefs => 'Detectar citas',
+    _WizardStep.exploreRefs => 'Explorar citas',
+    _WizardStep.finish => 'Guardar',
+  };
 }
 
 // ============================================================
@@ -2784,6 +3081,7 @@ class _WizardHomePageState extends State<WizardHomePage> {
   static const _ocrChannel = MethodChannel('versecatch/ocr');
 
   _WizardStep _step = _WizardStep.chooseSource;
+  final Set<_WizardStep> _completedSteps = <_WizardStep>{};
   _WizardSource? _source;
 
   final _textController = TextEditingController();
@@ -2865,6 +3163,7 @@ class _WizardHomePageState extends State<WizardHomePage> {
     _textController.clear();
     setState(() {
       _step = _WizardStep.chooseSource;
+      _completedSteps.clear();
       _source = null;
       _imagePath = null;
       _processing = false;
@@ -2886,6 +3185,7 @@ class _WizardHomePageState extends State<WizardHomePage> {
 
   void _selectSource(_WizardSource source) {
     setState(() {
+      _completedSteps.add(_WizardStep.chooseSource);
       _source = source;
       _step = _WizardStep.acquireContent;
     });
@@ -2894,13 +3194,29 @@ class _WizardHomePageState extends State<WizardHomePage> {
     }
   }
 
-  void _advanceToReview() => setState(() => _step = _WizardStep.reviewText);
+  void _advanceToReview() {
+    setState(() {
+      _completedSteps.add(_WizardStep.acquireContent);
+      _step = _WizardStep.reviewText;
+    });
+  }
+
+  void _navigateToStep(_WizardStep step) {
+    if (step == _step || !_completedSteps.contains(step)) return;
+    setState(() => _step = step);
+    if (step == _WizardStep.exploreRefs && _activeReference != null) {
+      _loadBibleText();
+    }
+  }
 
   Future<void> _runDetection() async {
     final text = _textController.text.trim();
     if (text.isEmpty) return;
     final start = DateTime.now();
-    setState(() => _step = _WizardStep.detectRefs);
+    setState(() {
+      _completedSteps.add(_WizardStep.reviewText);
+      _step = _WizardStep.detectRefs;
+    });
     final matches = extractVerseMatches(text);
     final counts = <String, int>{};
     for (final m in matches) {
@@ -2922,7 +3238,10 @@ class _WizardHomePageState extends State<WizardHomePage> {
   }
 
   void _goToExplore() {
-    setState(() => _step = _WizardStep.exploreRefs);
+    setState(() {
+      _completedSteps.add(_WizardStep.detectRefs);
+      _step = _WizardStep.exploreRefs;
+    });
     _loadBibleText();
   }
 
@@ -2939,8 +3258,10 @@ class _WizardHomePageState extends State<WizardHomePage> {
 
   void _navigateRef(int delta) {
     if (_groupedRefs.isEmpty) return;
-    final newIndex =
-        (_currentRefIndex + delta).clamp(0, _groupedRefs.length - 1);
+    final newIndex = (_currentRefIndex + delta).clamp(
+      0,
+      _groupedRefs.length - 1,
+    );
     if (newIndex == _currentRefIndex) return;
     _selectRef(_groupedRefs[newIndex].reference, newIndex);
   }
@@ -2959,8 +3280,7 @@ class _WizardHomePageState extends State<WizardHomePage> {
       if (!mounted || reqId != _bibleLookupRequestId) return;
       final trimmed = text?.trim();
       setState(() {
-        _bibleText =
-            (trimmed != null && trimmed.isNotEmpty) ? trimmed : null;
+        _bibleText = (trimmed != null && trimmed.isNotEmpty) ? trimmed : null;
         _bibleMessage = _bibleText != null
             ? kNoBibleTextMessage
             : 'No se encontró texto para $ref.';
@@ -2996,9 +3316,8 @@ class _WizardHomePageState extends State<WizardHomePage> {
     await _store.setIncludeBibleTextInOutput(value);
   }
 
-  Future<({String content, String? warning})> _buildOutputContentForCurrentSelection({
-    required String sourceText,
-  }) async {
+  Future<({String content, String? warning})>
+  _buildOutputContentForCurrentSelection({required String sourceText}) async {
     final version = _selectedBibleVersionOption();
     final payload = await _buildClipboardPayloadForCurrentSelection(
       sourceText: sourceText,
@@ -3016,7 +3335,7 @@ class _WizardHomePageState extends State<WizardHomePage> {
   }
 
   Future<({Map<String, String> biblicalTexts, String? warning})>
-      _buildClipboardPayloadForCurrentSelection({
+  _buildClipboardPayloadForCurrentSelection({
     required String sourceText,
     void Function(int current, int total)? onProgress,
   }) async {
@@ -3036,15 +3355,16 @@ class _WizardHomePageState extends State<WizardHomePage> {
   }
 
   Future<({Map<String, String> biblicalTexts, List<String> errors})>
-      _collectBibleTextsForReferences(
+  _collectBibleTextsForReferences(
     List<String> references, {
     void Function(int current, int total)? onProgress,
   }) async {
     final collected = <String, String>{};
     final errors = <String>[];
     final random = Random();
-    final rateLimitWindowMs =
-        kAppEnvironment.toLowerCase() == 'live' ? 1600 : 900;
+    final rateLimitWindowMs = kAppEnvironment.toLowerCase() == 'live'
+        ? 1600
+        : 900;
     var nextAllowedAt = DateTime.now();
 
     for (var index = 0; index < references.length; index++) {
@@ -3070,7 +3390,9 @@ class _WizardHomePageState extends State<WizardHomePage> {
       } catch (error, stackTrace) {
         final detail = error.toString();
         errors.add('$reference: $detail');
-        debugPrint('Bible text lookup failed for $reference: $error\n$stackTrace');
+        debugPrint(
+          'Bible text lookup failed for $reference: $error\n$stackTrace',
+        );
       } finally {
         nextAllowedAt = DateTime.now().add(
           Duration(milliseconds: rateLimitWindowMs),
@@ -3102,13 +3424,18 @@ class _WizardHomePageState extends State<WizardHomePage> {
 
   Future<T?> _showActionProgressDialog<T>({
     required String loadingMessage,
-    required Future<T> Function(void Function(int current, int total) updateProgress)
-        action,
+    required Future<T> Function(
+      void Function(int current, int total) updateProgress,
+    )
+    action,
   }) async {
     final startedAt = DateTime.now();
-    final progressState = ValueNotifier<({int current, int total, bool completed})>(
-      (current: 0, total: 0, completed: false),
-    );
+    final progressState =
+        ValueNotifier<({int current, int total, bool completed})>((
+          current: 0,
+          total: 0,
+          completed: false,
+        ));
     void Function()? refreshDialog;
     showDialog<T?>(
       context: context,
@@ -3179,7 +3506,11 @@ class _WizardHomePageState extends State<WizardHomePage> {
     try {
       final result = await action((current, total) {
         if (_cancelCurrentAction) return;
-        progressState.value = (current: current, total: total, completed: false);
+        progressState.value = (
+          current: current,
+          total: total,
+          completed: false,
+        );
         refreshDialog?.call();
       });
       if (_cancelCurrentAction) {
@@ -3217,15 +3548,18 @@ class _WizardHomePageState extends State<WizardHomePage> {
 
     try {
       final version = _selectedBibleVersionOption();
-      final payload = await _showActionProgressDialog<({Map<String, String> biblicalTexts, String? warning})>(
-        loadingMessage: 'Preparando copia de citas…',
-        action: (updateProgress) async {
-          return _buildClipboardPayloadForCurrentSelection(
-            sourceText: text,
-            onProgress: updateProgress,
+      final payload =
+          await _showActionProgressDialog<
+            ({Map<String, String> biblicalTexts, String? warning})
+          >(
+            loadingMessage: 'Preparando copia de citas…',
+            action: (updateProgress) async {
+              return _buildClipboardPayloadForCurrentSelection(
+                sourceText: text,
+                onProgress: updateProgress,
+              );
+            },
           );
-        },
-      );
       if (payload == null || _cancelCurrentAction) return;
       if (payload.warning != null) {
         await _showOutputFailureDialog(payload.warning!);
@@ -3239,9 +3573,9 @@ class _WizardHomePageState extends State<WizardHomePage> {
       await Clipboard.setData(ClipboardData(text: clipboardContent));
       if (!mounted) return;
       setState(() => _completedAction = _FinishAction.copiedCitations);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Citas copiadas')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Citas copiadas')));
     } catch (error) {
       if (!mounted) return;
       await _showOutputFailureDialog(error);
@@ -3254,15 +3588,18 @@ class _WizardHomePageState extends State<WizardHomePage> {
 
     try {
       final version = _selectedBibleVersionOption();
-      final payload = await _showActionProgressDialog<({Map<String, String> biblicalTexts, String? warning})>(
-        loadingMessage: 'Preparando resultado escaneado…',
-        action: (updateProgress) async {
-          return _buildClipboardPayloadForCurrentSelection(
-            sourceText: text,
-            onProgress: updateProgress,
+      final payload =
+          await _showActionProgressDialog<
+            ({Map<String, String> biblicalTexts, String? warning})
+          >(
+            loadingMessage: 'Preparando resultado escaneado…',
+            action: (updateProgress) async {
+              return _buildClipboardPayloadForCurrentSelection(
+                sourceText: text,
+                onProgress: updateProgress,
+              );
+            },
           );
-        },
-      );
       if (payload == null || _cancelCurrentAction) return;
       if (payload.warning != null) {
         await _showOutputFailureDialog(payload.warning!);
@@ -3278,9 +3615,7 @@ class _WizardHomePageState extends State<WizardHomePage> {
       if (!mounted) return;
       setState(() => _completedAction = _FinishAction.copiedScannedResult);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Resultado copiado al portapapeles'),
-        ),
+        const SnackBar(content: Text('Resultado copiado al portapapeles')),
       );
     } catch (error) {
       if (!mounted) return;
@@ -3299,7 +3634,9 @@ class _WizardHomePageState extends State<WizardHomePage> {
         .substring(0, 19);
     final defaultFileName = 'versecatch_$timestamp.txt';
     final fileNameController = TextEditingController(text: defaultFileName);
-    final directoryController = TextEditingController(text: defaultDirectory.path);
+    final directoryController = TextEditingController(
+      text: defaultDirectory.path,
+    );
     final result = await showDialog<({String directoryPath, String fileName})>(
       context: context,
       builder: (dialogContext) {
@@ -3354,14 +3691,12 @@ class _WizardHomePageState extends State<WizardHomePage> {
                   child: const Text('Cancelar'),
                 ),
                 FilledButton(
-                  onPressed: () => Navigator.of(dialogContext).pop(
-                    (
-                      directoryPath: directoryController.text.trim(),
-                      fileName: fileNameController.text.trim().isEmpty
-                          ? defaultFileName
-                          : fileNameController.text.trim(),
-                    ),
-                  ),
+                  onPressed: () => Navigator.of(dialogContext).pop((
+                    directoryPath: directoryController.text.trim(),
+                    fileName: fileNameController.text.trim().isEmpty
+                        ? defaultFileName
+                        : fileNameController.text.trim(),
+                  )),
                   child: const Text('Exportar'),
                 ),
               ],
@@ -3509,21 +3844,23 @@ class _WizardHomePageState extends State<WizardHomePage> {
   Future<void> _saveToHistory() async {
     final text = _textController.text.trim();
     if (text.isEmpty || _savedToHistory) return;
-    await _store.insert(CaptureRecord(
-      createdAt: DateTime.now(),
-      imagePath: _imagePath ?? '',
-      recognizedText: text,
-      references: _groupedRefs.map((r) => r.reference).toList(),
-    ));
+    await _store.insert(
+      CaptureRecord(
+        createdAt: DateTime.now(),
+        imagePath: _imagePath ?? '',
+        recognizedText: text,
+        references: _groupedRefs.map((r) => r.reference).toList(),
+      ),
+    );
     await _loadHistory();
     if (!mounted) return;
     setState(() {
       _savedToHistory = true;
       _completedAction = _FinishAction.savedToHistory;
     });
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Guardado en historial')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Guardado en historial')));
   }
 
   Future<void> _pickTextFile() async {
@@ -3561,8 +3898,9 @@ class _WizardHomePageState extends State<WizardHomePage> {
     } catch (e, st) {
       debugPrint('OCR error: $e\n$st');
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('OCR falló: $e')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('OCR falló: $e')));
       }
     } finally {
       if (mounted) setState(() => _processing = false);
@@ -3602,8 +3940,9 @@ class _WizardHomePageState extends State<WizardHomePage> {
     } catch (e, st) {
       debugPrint('OCR error: $e\n$st');
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('OCR falló: $e')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('OCR falló: $e')));
         setState(() => _step = _WizardStep.chooseSource);
       }
     } finally {
@@ -3640,19 +3979,20 @@ class _WizardHomePageState extends State<WizardHomePage> {
     final ch = (decoded.height * cf).round();
     final cx = ((decoded.width - cw) / 2).round();
     final cy = ((decoded.height - ch) / 2).round();
-    final cropped =
-        img.copyCrop(decoded, x: cx, y: cy, width: cw, height: ch);
+    final cropped = img.copyCrop(decoded, x: cx, y: cy, width: cw, height: ch);
     final gray = img.grayscale(cropped);
-    final resized =
-        gray.width < 1200 ? img.copyResize(gray, width: 1200) : gray;
+    final resized = gray.width < 1200
+        ? img.copyResize(gray, width: 1200)
+        : gray;
     final dir = await getTemporaryDirectory();
     if (!await dir.exists()) await dir.create(recursive: true);
     final out = p.join(
       dir.path,
       'ocr_${DateTime.now().microsecondsSinceEpoch}.jpg',
     );
-    await File(out).writeAsBytes(img.encodeJpg(resized, quality: 95),
-        flush: true);
+    await File(
+      out,
+    ).writeAsBytes(img.encodeJpg(resized, quality: 95), flush: true);
     return (path: out, temporary: true);
   }
 
@@ -3692,11 +4032,14 @@ class _WizardHomePageState extends State<WizardHomePage> {
             ),
           ),
         ),
-        _WizardTopBar(step: _step, onReset: _resetWizard),
-        const Divider(height: 1),
-        Expanded(
-          child: _buildStepContent(context, isDesktop: false),
+        _WizardTopBar(
+          step: _step,
+          completedSteps: _completedSteps,
+          onStepSelected: _navigateToStep,
+          onReset: _resetWizard,
         ),
+        const Divider(height: 1),
+        Expanded(child: _buildStepContent(context, isDesktop: false)),
       ],
     );
   }
@@ -3704,11 +4047,14 @@ class _WizardHomePageState extends State<WizardHomePage> {
   Widget _buildDesktopLayout(BuildContext context) {
     return Row(
       children: [
-        _WizardSidebar(step: _step, onReset: _resetWizard),
-        const VerticalDivider(width: 1),
-        Expanded(
-          child: _buildStepContent(context, isDesktop: true),
+        _WizardSidebar(
+          step: _step,
+          completedSteps: _completedSteps,
+          onStepSelected: _navigateToStep,
+          onReset: _resetWizard,
         ),
+        const VerticalDivider(width: 1),
+        Expanded(child: _buildStepContent(context, isDesktop: true)),
       ],
     );
   }
@@ -3716,66 +4062,69 @@ class _WizardHomePageState extends State<WizardHomePage> {
   Widget _buildStepContent(BuildContext context, {required bool isDesktop}) {
     return switch (_step) {
       _WizardStep.chooseSource => _ChooseSourceStep(
-          cameraSupported: _supportsCameraCapture,
-          onSelect: _selectSource,
-        ),
+        cameraSupported: _supportsCameraCapture,
+        onSelect: _selectSource,
+      ),
       _WizardStep.acquireContent => _AcquireContentStep(
-          source: _source ?? _WizardSource.text,
-          textController: _textController,
-          imagePath: _imagePath,
-          processing: _processing,
-          history: _history,
-          onPickFile: _pickTextFile,
-          onPickImage: _pickImage,
-          onOpenCamera: _openCamera,
-          onContinueText: _advanceToReview,
-          onHistorySelect: (r) {
-            _textController.text = r.recognizedText;
-            _advanceToReview();
-          },
-        ),
+        source: _source ?? _WizardSource.text,
+        textController: _textController,
+        imagePath: _imagePath,
+        processing: _processing,
+        history: _history,
+        onPickFile: _pickTextFile,
+        onPickImage: _pickImage,
+        onOpenCamera: _openCamera,
+        onContinueText: _advanceToReview,
+        onHistorySelect: (r) {
+          _textController.text = r.recognizedText;
+          _advanceToReview();
+        },
+      ),
       _WizardStep.reviewText => _ReviewTextStep(
-          textController: _textController,
-          onBack: () => setState(() => _step = _WizardStep.acquireContent),
-          onContinue: _runDetection,
-        ),
+        textController: _textController,
+        onBack: () => setState(() => _step = _WizardStep.acquireContent),
+        onContinue: _runDetection,
+      ),
       _WizardStep.detectRefs => _DetectRefsStep(
-          charCount: _textController.text.length,
-          groupedRefs: _groupedRefs,
-          detectionDuration: _detectionDuration,
-          onBack: () => setState(() => _step = _WizardStep.reviewText),
-          onContinue: _groupedRefs.isNotEmpty ? _goToExplore : null,
-        ),
+        charCount: _textController.text.length,
+        groupedRefs: _groupedRefs,
+        detectionDuration: _detectionDuration,
+        onBack: () => setState(() => _step = _WizardStep.reviewText),
+        onContinue: _groupedRefs.isNotEmpty ? _goToExplore : null,
+      ),
       _WizardStep.exploreRefs => _ExploreRefsStep(
-          groupedRefs: _groupedRefs,
-          currentRefIndex: _currentRefIndex,
-          activeReference: _activeReference,
-          bibleText: _bibleText,
-          bibleMessage: _bibleMessage,
-          loadingBibleText: _loadingBibleText,
-          selectedBibleVersionId: _selectedBibleVersionId,
-          copiedFeedbackVisible: _copiedFeedbackVisible,
-          isDesktop: isDesktop,
-          onRefSelected: _selectRef,
-          onNavigate: _navigateRef,
-          onBibleVersionChanged: _onBibleVersionChanged,
-          onCopyBibleText: _copyBibleText,
-          onBack: () => setState(() => _step = _WizardStep.detectRefs),
-          onContinue: () => setState(() => _step = _WizardStep.finish),
-        ),
+        groupedRefs: _groupedRefs,
+        currentRefIndex: _currentRefIndex,
+        activeReference: _activeReference,
+        bibleText: _bibleText,
+        bibleMessage: _bibleMessage,
+        loadingBibleText: _loadingBibleText,
+        selectedBibleVersionId: _selectedBibleVersionId,
+        copiedFeedbackVisible: _copiedFeedbackVisible,
+        isDesktop: isDesktop,
+        onRefSelected: _selectRef,
+        onNavigate: _navigateRef,
+        onBibleVersionChanged: _onBibleVersionChanged,
+        onCopyBibleText: _copyBibleText,
+        onBack: () => setState(() => _step = _WizardStep.detectRefs),
+        onContinue: () => setState(() {
+          _completedSteps.add(_WizardStep.exploreRefs);
+          _step = _WizardStep.finish;
+        }),
+      ),
       _WizardStep.finish => _FinishStep(
-          refCount: _groupedRefs.length,
-          savedToHistory: _savedToHistory,
-          completedAction: _completedAction,
-          includeBibleTextInOutput: _includeBibleTextInOutput,
-          exportDirectoryPath: _exportDirectoryPath,
-          onSaveToHistory: _saveToHistory,
-          onCopyReferences: _copyAllReferences,
-          onShareResult: _shareResult,
-          onExportText: _exportText,
-          onToggleIncludeBibleText: _toggleIncludeBibleText,
-          onNewScan: _resetWizard,
-        ),
+        refCount: _groupedRefs.length,
+        savedToHistory: _savedToHistory,
+        completedAction: _completedAction,
+        includeBibleTextInOutput: _includeBibleTextInOutput,
+        exportDirectoryPath: _exportDirectoryPath,
+        onSaveToHistory: _saveToHistory,
+        onCopyReferences: _copyAllReferences,
+        onShareResult: _shareResult,
+        onExportText: _exportText,
+        onToggleIncludeBibleText: _toggleIncludeBibleText,
+        onNewScan: _resetWizard,
+      ),
     };
   }
 }
@@ -3785,8 +4134,15 @@ class _WizardHomePageState extends State<WizardHomePage> {
 // ============================================================
 
 class _WizardTopBar extends StatelessWidget {
-  const _WizardTopBar({required this.step, required this.onReset});
+  const _WizardTopBar({
+    required this.step,
+    required this.completedSteps,
+    required this.onStepSelected,
+    required this.onReset,
+  });
   final _WizardStep step;
+  final Set<_WizardStep> completedSteps;
+  final ValueChanged<_WizardStep> onStepSelected;
   final VoidCallback onReset;
 
   @override
@@ -3803,15 +4159,22 @@ class _WizardTopBar extends StatelessWidget {
                 children: [
                   for (int i = 0; i < _WizardStep.values.length; i++) ...[
                     if (i > 0)
-                      _StepConnector(completed: i <= currentIndex),
+                      _StepConnector(
+                        completed: completedSteps.contains(
+                          _WizardStep.values[i - 1],
+                        ),
+                      ),
                     _StepCircle(
                       number: i + 1,
                       label: _WizardStep.values[i].label,
-                      state: i < currentIndex
+                      onTap: completedSteps.contains(_WizardStep.values[i])
+                          ? () => onStepSelected(_WizardStep.values[i])
+                          : null,
+                      state: completedSteps.contains(_WizardStep.values[i])
                           ? _StepState.completed
                           : i == currentIndex
-                              ? _StepState.active
-                              : _StepState.inactive,
+                          ? _StepState.active
+                          : _StepState.inactive,
                     ),
                   ],
                 ],
@@ -3819,7 +4182,7 @@ class _WizardTopBar extends StatelessWidget {
             ),
           ),
           IconButton(
-            icon: const Icon(Icons.restart_alt_outlined),
+            icon: const Icon(Icons.first_page_rounded),
             tooltip: 'Nuevo escaneo',
             onPressed: onReset,
           ),
@@ -3830,8 +4193,15 @@ class _WizardTopBar extends StatelessWidget {
 }
 
 class _WizardSidebar extends StatelessWidget {
-  const _WizardSidebar({required this.step, required this.onReset});
+  const _WizardSidebar({
+    required this.step,
+    required this.completedSteps,
+    required this.onStepSelected,
+    required this.onReset,
+  });
   final _WizardStep step;
+  final Set<_WizardStep> completedSteps;
+  final ValueChanged<_WizardStep> onStepSelected;
   final VoidCallback onReset;
 
   @override
@@ -3847,8 +4217,11 @@ class _WizardSidebar extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(Icons.menu_book_rounded,
-                  color: theme.colorScheme.primary, size: 20),
+              Icon(
+                Icons.menu_book_rounded,
+                color: theme.colorScheme.primary,
+                size: 20,
+              ),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
@@ -3868,11 +4241,14 @@ class _WizardSidebar extends StatelessWidget {
             _VerticalStepItem(
               number: i + 1,
               label: _WizardStep.values[i].label,
-              state: i < currentIndex
+              onTap: completedSteps.contains(_WizardStep.values[i])
+                  ? () => onStepSelected(_WizardStep.values[i])
+                  : null,
+              state: completedSteps.contains(_WizardStep.values[i])
                   ? _StepState.completed
                   : i == currentIndex
-                      ? _StepState.active
-                      : _StepState.inactive,
+                  ? _StepState.active
+                  : _StepState.inactive,
             ),
             if (i < _WizardStep.values.length - 1)
               Padding(
@@ -3889,7 +4265,7 @@ class _WizardSidebar extends StatelessWidget {
           const Spacer(),
           TextButton.icon(
             onPressed: onReset,
-            icon: const Icon(Icons.restart_alt_outlined, size: 16),
+            icon: const Icon(Icons.first_page_rounded, size: 16),
             label: const Text('Nuevo escaneo'),
           ),
         ],
@@ -3905,10 +4281,12 @@ class _StepCircle extends StatelessWidget {
     required this.number,
     required this.label,
     required this.state,
+    required this.onTap,
   });
   final int number;
   final String label;
   final _StepState state;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -3917,55 +4295,62 @@ class _StepCircle extends StatelessWidget {
     final isActive = state == _StepState.active;
     final isCompleted = state == _StepState.completed;
     final filled = isActive || isCompleted;
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          width: 32,
-          height: 32,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: filled
-                ? primary
-                : theme.colorScheme.surfaceContainerHighest,
-            border: Border.all(
-              color: filled ? primary : theme.colorScheme.outline,
-              width: isActive ? 2 : 1.5,
-            ),
-          ),
-          child: Center(
-            child: isCompleted
-                ? Icon(Icons.check, size: 16,
-                    color: theme.colorScheme.onPrimary)
-                : Text(
-                    '$number',
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.bold,
-                      color: isActive
-                          ? theme.colorScheme.onPrimary
-                          : theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-          ),
-        ),
-        const SizedBox(height: 4),
-        SizedBox(
-          width: 60,
-          child: Text(
-            label,
-            textAlign: TextAlign.center,
-            style: theme.textTheme.labelSmall?.copyWith(
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 32,
+            height: 32,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
               color: filled
-                  ? theme.colorScheme.primary
-                  : theme.colorScheme.onSurfaceVariant,
-              fontWeight: isActive ? FontWeight.bold : null,
+                  ? primary
+                  : theme.colorScheme.surfaceContainerHighest,
+              border: Border.all(
+                color: filled ? primary : theme.colorScheme.outline,
+                width: isActive ? 2 : 1.5,
+              ),
             ),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
+            child: Center(
+              child: isCompleted
+                  ? Icon(
+                      Icons.check,
+                      size: 16,
+                      color: theme.colorScheme.onPrimary,
+                    )
+                  : Text(
+                      '$number',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                        color: isActive
+                            ? theme.colorScheme.onPrimary
+                            : theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+            ),
           ),
-        ),
-      ],
+          const SizedBox(height: 4),
+          SizedBox(
+            width: 60,
+            child: Text(
+              label,
+              textAlign: TextAlign.center,
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: filled
+                    ? theme.colorScheme.primary
+                    : theme.colorScheme.onSurfaceVariant,
+                fontWeight: isActive ? FontWeight.bold : null,
+              ),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -3991,10 +4376,12 @@ class _VerticalStepItem extends StatelessWidget {
     required this.number,
     required this.label,
     required this.state,
+    required this.onTap,
   });
   final int number;
   final String label;
   final _StepState state;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -4003,52 +4390,59 @@ class _VerticalStepItem extends StatelessWidget {
     final isActive = state == _StepState.active;
     final isCompleted = state == _StepState.completed;
     final filled = isActive || isCompleted;
-    return Row(
-      children: [
-        Container(
-          width: 28,
-          height: 28,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: filled
-                ? primary
-                : theme.colorScheme.surfaceContainerHighest,
-            border: Border.all(
-              color: filled ? primary : theme.colorScheme.outline,
-              width: 1.5,
-            ),
-          ),
-          child: Center(
-            child: isCompleted
-                ? Icon(Icons.check, size: 14,
-                    color: theme.colorScheme.onPrimary)
-                : Text(
-                    '$number',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.bold,
-                      color: isActive
-                          ? theme.colorScheme.onPrimary
-                          : theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-          ),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Text(
-            label,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: isActive
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Row(
+        children: [
+          Container(
+            width: 28,
+            height: 28,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: filled
                   ? primary
-                  : isCompleted
-                      ? theme.colorScheme.onSurface
-                      : theme.colorScheme.onSurfaceVariant,
-              fontWeight: isActive ? FontWeight.bold : null,
+                  : theme.colorScheme.surfaceContainerHighest,
+              border: Border.all(
+                color: filled ? primary : theme.colorScheme.outline,
+                width: 1.5,
+              ),
+            ),
+            child: Center(
+              child: isCompleted
+                  ? Icon(
+                      Icons.check,
+                      size: 14,
+                      color: theme.colorScheme.onPrimary,
+                    )
+                  : Text(
+                      '$number',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        color: isActive
+                            ? theme.colorScheme.onPrimary
+                            : theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
             ),
           ),
-        ),
-      ],
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              label,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: isActive
+                    ? primary
+                    : isCompleted
+                    ? theme.colorScheme.onSurface
+                    : theme.colorScheme.onSurfaceVariant,
+                fontWeight: isActive ? FontWeight.bold : null,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -4073,8 +4467,7 @@ class _ChooseSourceStep extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('¿Cómo quieres comenzar?',
-              style: theme.textTheme.headlineSmall),
+          Text('¿Cómo quieres comenzar?', style: theme.textTheme.headlineSmall),
           const SizedBox(height: 6),
           Text(
             'Elige una opción para importar tu contenido.',
@@ -4086,8 +4479,7 @@ class _ChooseSourceStep extends StatelessWidget {
           _SourceCard(
             icon: Icons.text_fields_rounded,
             title: 'Escribir o pegar texto',
-            subtitle:
-                'Escribe directamente o pega desde el portapapeles.',
+            subtitle: 'Escribe directamente o pega desde el portapapeles.',
             onTap: () => onSelect(_WizardSource.text),
           ),
           const SizedBox(height: 12),
@@ -4157,8 +4549,11 @@ class _SourceCard extends StatelessWidget {
                   color: theme.colorScheme.primaryContainer,
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: Icon(icon,
-                    color: theme.colorScheme.onPrimaryContainer, size: 24),
+                child: Icon(
+                  icon,
+                  color: theme.colorScheme.onPrimaryContainer,
+                  size: 24,
+                ),
               ),
               const SizedBox(width: 16),
               Expanded(
@@ -4176,8 +4571,10 @@ class _SourceCard extends StatelessWidget {
                   ],
                 ),
               ),
-              Icon(Icons.chevron_right,
-                  color: theme.colorScheme.onSurfaceVariant),
+              Icon(
+                Icons.chevron_right,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
             ],
           ),
         ),
@@ -4218,30 +4615,29 @@ class _AcquireContentStep extends StatelessWidget {
   Widget build(BuildContext context) {
     return switch (source) {
       _WizardSource.text => _TextInputContent(
-          controller: textController,
-          onContinue: onContinueText,
-        ),
+        controller: textController,
+        onContinue: onContinueText,
+      ),
       _WizardSource.file => _FilePickerContent(
-          processing: processing,
-          onPickFile: onPickFile,
-        ),
+        processing: processing,
+        onPickFile: onPickFile,
+      ),
       _WizardSource.image => _ImagePickerContent(
-          imagePath: imagePath,
-          processing: processing,
-          onPickImage: onPickImage,
-        ),
+        imagePath: imagePath,
+        processing: processing,
+        onPickImage: onPickImage,
+      ),
       _WizardSource.camera => _CameraLoadingContent(processing: processing),
       _WizardSource.history => _HistoryListContent(
-          history: history,
-          onSelect: onHistorySelect,
-        ),
+        history: history,
+        onSelect: onHistorySelect,
+      ),
     };
   }
 }
 
 class _TextInputContent extends StatelessWidget {
-  const _TextInputContent(
-      {required this.controller, required this.onContinue});
+  const _TextInputContent({required this.controller, required this.onContinue});
   final TextEditingController controller;
   final VoidCallback onContinue;
 
@@ -4252,8 +4648,10 @@ class _TextInputContent extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Escribe o pega el texto',
-              style: Theme.of(context).textTheme.titleMedium),
+          Text(
+            'Escribe o pega el texto',
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
           const SizedBox(height: 12),
           Expanded(
             child: TextField(
@@ -4276,8 +4674,9 @@ class _TextInputContent extends StatelessWidget {
             child: ListenableBuilder(
               listenable: controller,
               builder: (context, _) => FilledButton.icon(
-                onPressed:
-                    controller.text.trim().isNotEmpty ? onContinue : null,
+                onPressed: controller.text.trim().isNotEmpty
+                    ? onContinue
+                    : null,
                 icon: const Icon(Icons.arrow_forward, size: 18),
                 label: const Text('Continuar'),
               ),
@@ -4290,8 +4689,10 @@ class _TextInputContent extends StatelessWidget {
 }
 
 class _FilePickerContent extends StatelessWidget {
-  const _FilePickerContent(
-      {required this.processing, required this.onPickFile});
+  const _FilePickerContent({
+    required this.processing,
+    required this.onPickFile,
+  });
   final bool processing;
   final VoidCallback onPickFile;
 
@@ -4304,17 +4705,23 @@ class _FilePickerContent extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.description_outlined,
-                size: 64, color: theme.colorScheme.primary),
+            Icon(
+              Icons.description_outlined,
+              size: 64,
+              color: theme.colorScheme.primary,
+            ),
             const SizedBox(height: 16),
-            Text('Selecciona un archivo .txt',
-                style: theme.textTheme.titleMedium),
+            Text(
+              'Selecciona un archivo .txt',
+              style: theme.textTheme.titleMedium,
+            ),
             const SizedBox(height: 8),
             Text(
               'El contenido se cargará automáticamente.',
               textAlign: TextAlign.center,
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
             ),
             const SizedBox(height: 24),
             FilledButton.icon(
@@ -4324,7 +4731,9 @@ class _FilePickerContent extends StatelessWidget {
                       width: 18,
                       height: 18,
                       child: CircularProgressIndicator(
-                          strokeWidth: 2, color: Colors.white),
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
                     )
                   : const Icon(Icons.file_open_outlined),
               label: Text(processing ? 'Procesando…' : 'Abrir archivo'),
@@ -4355,8 +4764,7 @@ class _ImagePickerContent extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text('Selecciona una imagen',
-              style: theme.textTheme.titleMedium),
+          Text('Selecciona una imagen', style: theme.textTheme.titleMedium),
           const SizedBox(height: 16),
           if (hasImage)
             ClipRRect(
@@ -4372,21 +4780,27 @@ class _ImagePickerContent extends StatelessWidget {
             Container(
               height: 180,
               decoration: BoxDecoration(
-                color: theme.colorScheme.surfaceContainerHighest
-                    .withValues(alpha: 0.4),
+                color: theme.colorScheme.surfaceContainerHighest.withValues(
+                  alpha: 0.4,
+                ),
                 borderRadius: BorderRadius.circular(12),
-                border:
-                    Border.all(color: theme.colorScheme.outlineVariant),
+                border: Border.all(color: theme.colorScheme.outlineVariant),
               ),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.image_outlined,
-                      size: 48, color: theme.colorScheme.primary),
+                  Icon(
+                    Icons.image_outlined,
+                    size: 48,
+                    color: theme.colorScheme.primary,
+                  ),
                   const SizedBox(height: 8),
-                  Text('Sin imagen',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant)),
+                  Text(
+                    'Sin imagen',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -4398,16 +4812,22 @@ class _ImagePickerContent extends StatelessWidget {
                     width: 18,
                     height: 18,
                     child: CircularProgressIndicator(
-                        strokeWidth: 2, color: Colors.white),
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
                   )
-                : Icon(hasImage
-                    ? Icons.refresh_outlined
-                    : Icons.photo_library_outlined),
-            label: Text(processing
-                ? 'Procesando OCR…'
-                : hasImage
-                    ? 'Cambiar imagen'
-                    : 'Elegir imagen'),
+                : Icon(
+                    hasImage
+                        ? Icons.refresh_outlined
+                        : Icons.photo_library_outlined,
+                  ),
+            label: Text(
+              processing
+                  ? 'Procesando OCR…'
+                  : hasImage
+                  ? 'Cambiar imagen'
+                  : 'Elegir imagen',
+            ),
           ),
           if (processing) ...[
             const SizedBox(height: 12),
@@ -4416,7 +4836,8 @@ class _ImagePickerContent extends StatelessWidget {
             Text(
               'Extrayendo texto con OCR…',
               style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant),
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
             ),
           ],
         ],
@@ -4448,10 +4869,7 @@ class _CameraLoadingContent extends StatelessWidget {
 }
 
 class _HistoryListContent extends StatelessWidget {
-  const _HistoryListContent({
-    required this.history,
-    required this.onSelect,
-  });
+  const _HistoryListContent({required this.history, required this.onSelect});
   final List<CaptureRecord> history;
   final ValueChanged<CaptureRecord> onSelect;
 
@@ -4465,8 +4883,11 @@ class _HistoryListContent extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.history_outlined,
-                  size: 48, color: theme.colorScheme.onSurfaceVariant),
+              Icon(
+                Icons.history_outlined,
+                size: 48,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
               const SizedBox(height: 12),
               Text('Sin historial', style: theme.textTheme.titleMedium),
               const SizedBox(height: 8),
@@ -4474,7 +4895,8 @@ class _HistoryListContent extends StatelessWidget {
                 'Tus escaneos guardados aparecerán aquí.',
                 textAlign: TextAlign.center,
                 style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant),
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
               ),
             ],
           ),
@@ -4499,13 +4921,17 @@ class _HistoryListContent extends StatelessWidget {
                 children: [
                   Row(
                     children: [
-                      Icon(Icons.history_rounded,
-                          size: 14, color: theme.colorScheme.primary),
+                      Icon(
+                        Icons.history_rounded,
+                        size: 14,
+                        color: theme.colorScheme.primary,
+                      ),
                       const SizedBox(width: 6),
                       Text(
                         _formatTimestamp(record.createdAt),
                         style: theme.textTheme.labelSmall?.copyWith(
-                            color: theme.colorScheme.primary),
+                          color: theme.colorScheme.primary,
+                        ),
                       ),
                       const Spacer(),
                       if (record.references.isNotEmpty)
@@ -4561,20 +4987,7 @@ class _ReviewTextStepState extends State<_ReviewTextStep> {
   @override
   void initState() {
     super.initState();
-    widget.textController.addListener(_onTextChanged);
     _refreshPreview();
-  }
-
-  @override
-  void dispose() {
-    widget.textController.removeListener(_onTextChanged);
-    super.dispose();
-  }
-
-  void _onTextChanged() {
-    if (_showPreview) {
-      setState(() => _showPreview = false);
-    }
   }
 
   void _refreshPreview() {
@@ -4585,9 +4998,18 @@ class _ReviewTextStepState extends State<_ReviewTextStep> {
     });
   }
 
+  void _toggleMode() {
+    if (_showPreview) {
+      setState(() => _showPreview = false);
+      return;
+    }
+    _refreshPreview();
+  }
+
   TextSpan _buildHighlightedPreview(String text) {
     final spans = <InlineSpan>[];
-    final sorted = [..._previewMatches]..sort((a, b) => a.start.compareTo(b.start));
+    final sorted = [..._previewMatches]
+      ..sort((a, b) => a.start.compareTo(b.start));
     var pos = 0;
 
     for (final match in sorted) {
@@ -4631,69 +5053,77 @@ class _ReviewTextStepState extends State<_ReviewTextStep> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-          Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Revisar el texto reconocido',
-                        style: theme.textTheme.titleMedium),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Edita cualquier parte si es necesario.',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant),
-                    ),
-                  ],
-                ),
-              ),
-              IconButton.outlined(
-                onPressed: previewText.trim().isEmpty ? null : _refreshPreview,
-                tooltip: 'Volver a revisar citas',
-                icon: const Icon(Icons.visibility_outlined, size: 18),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final useSplit = constraints.maxWidth >= 760;
-              final previewPanel = _showPreview
-                  ? Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(10),
-                        color: theme.colorScheme.surfaceContainerLow,
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Revisar el texto reconocido',
+                        style: theme.textTheme.titleMedium,
                       ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Vista previa de citas bíblicas',
-                            style: theme.textTheme.labelMedium?.copyWith(
-                              color: theme.colorScheme.primary,
-                              fontWeight: FontWeight.bold,
+                      const SizedBox(height: 4),
+                      Text(
+                        'Edita cualquier parte si es necesario.',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                OutlinedButton.icon(
+                  key: const ValueKey('review-mode-toggle'),
+                  onPressed: previewText.trim().isEmpty ? null : _toggleMode,
+                  icon: Icon(
+                    _showPreview
+                        ? Icons.edit_outlined
+                        : Icons.visibility_outlined,
+                    size: 18,
+                  ),
+                  label: Text(_showPreview ? 'Editar' : 'Vista previa'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final previewPanel = _showPreview
+                    ? Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(10),
+                          color: theme.colorScheme.surfaceContainerLow,
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Vista previa de citas bíblicas',
+                              style: theme.textTheme.labelMedium?.copyWith(
+                                color: theme.colorScheme.primary,
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
-                          ),
-                          const SizedBox(height: 8),
-                          Expanded(
-                            child: SingleChildScrollView(
-                              child: SelectableText.rich(
-                                _buildHighlightedPreview(previewText),
-                                style: theme.textTheme.bodyMedium?.copyWith(
-                                  height: 1.5,
+                            const SizedBox(height: 8),
+                            Expanded(
+                              child: SingleChildScrollView(
+                                child: SelectableText.rich(
+                                  _buildHighlightedPreview(previewText),
+                                  style: theme.textTheme.bodyMedium?.copyWith(
+                                    height: 1.5,
+                                  ),
                                 ),
                               ),
                             ),
-                          ),
-                        ],
-                      ),
-                    )
-                  : const SizedBox.shrink();
-              final editorField = Expanded(
-                child: TextField(
+                          ],
+                        ),
+                      )
+                    : const SizedBox.shrink();
+                final editorField = TextField(
+                  key: const ValueKey('review-text-field'),
                   controller: widget.textController,
                   expands: true,
                   maxLines: null,
@@ -4703,68 +5133,52 @@ class _ReviewTextStepState extends State<_ReviewTextStep> {
                     border: OutlineInputBorder(),
                     alignLabelWithHint: true,
                   ),
-                ),
-              );
+                );
 
-              return SizedBox(
-                height: 320,
-                child: useSplit
-                    ? Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(child: previewPanel),
-                          const SizedBox(width: 12),
-                          editorField,
-                        ],
-                      )
-                    : Column(
-                        children: [
-                          if (_showPreview) ...[
-                            SizedBox(height: 180, child: previewPanel),
-                            const SizedBox(height: 12),
-                          ],
-                          editorField,
-                        ],
+                return SizedBox(
+                  height: 320,
+                  child: _showPreview ? previewPanel : editorField,
+                );
+              },
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: Wrap(
+                    spacing: 12,
+                    runSpacing: 8,
+                    children: [
+                      Text(
+                        '$charCount caracteres',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
                       ),
-              );
-            },
-          ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                child: Wrap(
-                  spacing: 12,
-                  runSpacing: 8,
-                  children: [
-                    Text(
-                      '$charCount caracteres',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant),
-                    ),
-                    Text(
-                      previewText.trim().isEmpty || !_showPreview
-                          ? '0 citas resaltadas'
-                          : previewLabel,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant),
-                    ),
-                  ],
+                      Text(
+                        previewText.trim().isEmpty || !_showPreview
+                            ? '0 citas resaltadas'
+                            : previewLabel,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              OutlinedButton(
-                onPressed: widget.onBack,
-                child: const Text('Atrás'),
-              ),
-              const SizedBox(width: 8),
-              FilledButton.icon(
-                onPressed: charCount > 0 ? widget.onContinue : null,
-                icon: const Icon(Icons.arrow_forward, size: 18),
-                label: const Text('Continuar'),
-              ),
-            ],
-          ),
-        ],
+                OutlinedButton(
+                  onPressed: widget.onBack,
+                  child: const Text('Atrás'),
+                ),
+                const SizedBox(width: 8),
+                FilledButton.icon(
+                  onPressed: charCount > 0 ? widget.onContinue : null,
+                  icon: const Icon(Icons.arrow_forward, size: 18),
+                  label: const Text('Continuar'),
+                ),
+              ],
+            ),
+          ],
         ),
       ),
     );
@@ -4811,7 +5225,8 @@ class _DetectRefsStep extends StatelessWidget {
           Text(
             'Se han detectado posibles citas bíblicas.',
             style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant),
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
           ),
           const SizedBox(height: 16),
           Expanded(
@@ -4820,12 +5235,16 @@ class _DetectRefsStep extends StatelessWidget {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(Icons.search_off_rounded,
-                            size: 48,
-                            color: theme.colorScheme.onSurfaceVariant),
+                        Icon(
+                          Icons.search_off_rounded,
+                          size: 48,
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
                         const SizedBox(height: 12),
-                        Text('Sin citas bíblicas detectadas.',
-                            style: theme.textTheme.bodyMedium),
+                        Text(
+                          'Sin citas bíblicas detectadas.',
+                          style: theme.textTheme.bodyMedium,
+                        ),
                       ],
                     ),
                   )
@@ -4837,17 +5256,18 @@ class _DetectRefsStep extends StatelessWidget {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Expanded(
-                                    flex: 3,
-                                    child: _RefCountList(
-                                        refs: groupedRefs)),
+                                  flex: 3,
+                                  child: _RefCountList(refs: groupedRefs),
+                                ),
                                 const SizedBox(width: 16),
                                 Expanded(
-                                    flex: 2,
-                                    child: _AnalysisSummaryCard(
-                                      charCount: charCount,
-                                      refCount: groupedRefs.length,
-                                      duration: detectionDuration!,
-                                    )),
+                                  flex: 2,
+                                  child: _AnalysisSummaryCard(
+                                    charCount: charCount,
+                                    refCount: groupedRefs.length,
+                                    duration: detectionDuration!,
+                                  ),
+                                ),
                               ],
                             )
                           : Column(
@@ -4859,8 +5279,8 @@ class _DetectRefsStep extends StatelessWidget {
                                 ),
                                 const SizedBox(height: 12),
                                 Expanded(
-                                    child: _RefCountList(
-                                        refs: groupedRefs)),
+                                  child: _RefCountList(refs: groupedRefs),
+                                ),
                               ],
                             );
                     },
@@ -4927,8 +5347,7 @@ class _AnalysisSummaryCard extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Resumen del análisis',
-                style: theme.textTheme.titleSmall),
+            Text('Resumen del análisis', style: theme.textTheme.titleSmall),
             const SizedBox(height: 12),
             _SummaryRow(
               icon: Icons.text_snippet_outlined,
@@ -4957,8 +5376,11 @@ class _AnalysisSummaryCard extends StatelessWidget {
 }
 
 class _SummaryRow extends StatelessWidget {
-  const _SummaryRow(
-      {required this.icon, required this.label, required this.value});
+  const _SummaryRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
   final IconData icon;
   final String label;
   final String value;
@@ -4974,12 +5396,18 @@ class _SummaryRow extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(label,
-                  style: theme.textTheme.labelSmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant)),
-              Text(value,
-                  style: theme.textTheme.bodySmall
-                      ?.copyWith(fontWeight: FontWeight.bold)),
+              Text(
+                label,
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+              Text(
+                value,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             ],
           ),
         ),
@@ -5198,12 +5626,12 @@ class _RefListPanel extends StatelessWidget {
           dense: true,
           selected: isActive,
           selectedColor: theme.colorScheme.primary,
-          selectedTileColor: theme.colorScheme.primaryContainer
-              .withValues(alpha: 0.3),
+          selectedTileColor: theme.colorScheme.primaryContainer.withValues(
+            alpha: 0.3,
+          ),
           title: Text(ref.reference, style: theme.textTheme.bodySmall),
           onTap: () => onSelect(ref.reference, i),
-          shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         );
       },
     );
@@ -5262,9 +5690,7 @@ class _VersePanel extends StatelessWidget {
       height: double.infinity,
       margin: EdgeInsets.zero,
       padding: EdgeInsets.zero,
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerLow,
-      ),
+      decoration: BoxDecoration(color: theme.colorScheme.surfaceContainerLow),
       child: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: text != null
@@ -5334,17 +5760,20 @@ class _FinishStep extends StatelessWidget {
               shape: BoxShape.circle,
               color: Colors.green.shade100,
             ),
-            child: Icon(Icons.check_circle_rounded,
-                color: Colors.green.shade700, size: 52),
+            child: Icon(
+              Icons.check_circle_rounded,
+              color: Colors.green.shade700,
+              size: 52,
+            ),
           ),
           const SizedBox(height: 20),
-          Text('¡Escaneo completado!',
-              style: theme.textTheme.headlineSmall),
+          Text('¡Escaneo completado!', style: theme.textTheme.headlineSmall),
           const SizedBox(height: 8),
           Text(
             'Se encontraron $refCount citas bíblicas.',
             style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant),
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
           ),
           const SizedBox(height: 24),
           SwitchListTile.adaptive(
@@ -5352,9 +5781,12 @@ class _FinishStep extends StatelessWidget {
             value: includeBibleTextInOutput,
             onChanged: onToggleIncludeBibleText,
             title: const Text('Incluir texto bíblico en resultados'),
-            subtitle: const Text('Se añadirá el texto bíblico de cada cita cuando sea posible.'),
+            subtitle: const Text(
+              'Se añadirá el texto bíblico de cada cita cuando sea posible.',
+            ),
           ),
-          if (exportDirectoryPath != null && exportDirectoryPath!.isNotEmpty) ...[
+          if (exportDirectoryPath != null &&
+              exportDirectoryPath!.isNotEmpty) ...[
             const SizedBox(height: 8),
             Text(
               'Carpeta exportación: $exportDirectoryPath',
@@ -5381,7 +5813,8 @@ class _FinishStep extends StatelessWidget {
           _FinishCard(
             icon: Icons.copy_outlined,
             title: 'Copiar citas',
-            subtitle: 'Copia solo las citas bíblicas encontradas y su texto bíblico si está activado.',
+            subtitle:
+                'Copia solo las citas bíblicas encontradas y su texto bíblico si está activado.',
             onTap: onCopyReferences,
             trailing: completedAction == _FinishAction.copiedCitations
                 ? Icon(Icons.check_circle, color: Colors.green.shade600)
@@ -5391,7 +5824,8 @@ class _FinishStep extends StatelessWidget {
           _FinishCard(
             icon: Icons.share_outlined,
             title: 'Copiar resultado escaneado',
-            subtitle: 'Copia solo el texto escaneado y su texto bíblico si está activado.',
+            subtitle:
+                'Copia solo el texto escaneado y su texto bíblico si está activado.',
             onTap: onShareResult,
             trailing: completedAction == _FinishAction.copiedScannedResult
                 ? Icon(Icons.check_circle, color: Colors.green.shade600)
@@ -5401,7 +5835,8 @@ class _FinishStep extends StatelessWidget {
           _FinishCard(
             icon: Icons.download_outlined,
             title: 'Exportar texto',
-            subtitle: 'Exporta el texto escaneado con citas y texto bíblico opcional en un archivo .txt.',
+            subtitle:
+                'Exporta el texto escaneado con citas y texto bíblico opcional en un archivo .txt.',
             onTap: onExportText,
             trailing: completedAction == _FinishAction.exported
                 ? Icon(Icons.check_circle, color: Colors.green.shade600)
@@ -5458,7 +5893,8 @@ class _FinishCard extends StatelessWidget {
                     Text(
                       subtitle,
                       style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant),
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
                     ),
                   ],
                 ),

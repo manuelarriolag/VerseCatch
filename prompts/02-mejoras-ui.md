@@ -25,6 +25,12 @@
   - En escritorio, cambiar el texto del label "VerseCatch" en el panel lateral, y en el tìtulo de la ventana por el texto "Verse Catch v{app_version}".
   - En móvil, agrega un label con el texto "Verse Catch v{app_version}" por encima del panel superior (donde se muestra el paso activo), esto empujará todos los componentes hacia abajo, asegurate que no ocurra OVERFLOW en dispositivos pequeños como iPhone 17e.
 
+- [x] TG3. Modifica los iconos del header que muestran el paso actual para que permita navegar directamente hacia el paso seleccionado.
+
+- [x] TG3.fix. Agrega la siguiente regla de navegación al header, solo se pueden nevegar hacia pasos ya concluidos, es decir, aquellos que se usaron con el botón continuar, de esta forma evitamos que se omitan pasos.
+
+- [x] TG4. Cambia el icono del botón "Nuevo escaneo" por uno que parezca "reset" o "ir al inicio", se me ocurre algo parecido a esto "|<-".
+
 ## Paso 3. Revisar texto
 
 - [x] T3.1. Quiero que el texto reconocido por el OCR (o el que haya pegado o escrito el usuario), muestre resaltadas en color magenta las citas bìblicas encontradas, pero este paso 3 no sustituye al paso 4, solo es un previo que ayudará al usuario a identificar visualmente las citas y si detecta alguna no resaltada que pueda ajustarla.
@@ -33,7 +39,10 @@
   - No resaltar mientras se esta escribiendo.
 - [x] T3.3. En la parte inferior hay un total de caracteres, agrega el total de refs resaltadas sin que esto desborde el espacio disponible en dispositivos pequeños como el iPhone 17e.
 - [x] T3.4. Quita el texto del botón "Preview", deja solamente el icono.
-- [x] T3.5. Coloca un split entre el panel de preview y el panel de texto, considerando que el split funcione bien para móvil y escritorio.
+- [x] T3.5. Coloca un split entre el panel de preview y el panel de texto, considerando que el split funcione bien para móvil y escritorio. DEPRECADO
+- [x] T3.6. Modifica este paso (Revisar texto) para que funcione de la siguiente manera:
+  - [x] T3.6.1. No deben mostrarse al mismo tiempo la vista previa y el cuadro de texto para editar, de esta forma deberán separarse claramente el modo vista previa del modo editar. Por defecto, al ingresar a este paso se debe mostrar el modo vista previa.
+  - [x] T3.6.2. El botón actual "vista previa" debe intercambiarse por "editar", acorde con el modo que este activado y una vez presionado debe hacer el toogle del modo e intercambiar el título del botón. Por ejemplo el botón debe decir "Vista Previa" si el modo activo es editar, y debe decir "Editar" si el modo activo es vista previa.
 
 ## Paso 5. Explorar citas
 - [x] T5.1. Alinear a la derecha el botón copy.
@@ -61,4 +70,6 @@
 ## Notas de alto impacto / riesgo
 - 2026-07-29 00:00: Se decidió mantener el resaltado únicamente en la vista previa del paso 3 y no durante la edición en vivo para evitar interferir con la escritura.
 - 2026-07-29 00:00: Se decidió usar un estilo magenta suave con fondo claro para que las citas resaltadas sean visibles sin saturar la interfaz.
+- 2026-08-08 20:13: Se decidió permitir navegación directa a cualquiera de los seis pasos desde los indicadores de móvil y escritorio, conservando el contenido y estado capturados; al entrar en Explorar citas se recarga el texto bíblico cuando existe una cita activa.
+- 2026-08-08 20:22: Se restringió la navegación directa del header a los pasos ya concluidos mediante el flujo normal; esta regla sustituye la navegación irrestricta registrada a las 20:13 y evita omitir pasos futuros. "Nuevo escaneo" limpia también el registro de pasos concluidos.
 
