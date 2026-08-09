@@ -3127,8 +3127,6 @@ class _WizardHomePageState extends State<WizardHomePage> {
 
   bool get _supportsCameraCapture =>
       !kIsWeb && (Platform.isAndroid || Platform.isIOS);
-  bool get _isDesktopPlatform =>
-      !kIsWeb && (Platform.isMacOS || Platform.isWindows || Platform.isLinux);
 
   @override
   void initState() {
@@ -4020,8 +4018,7 @@ class _WizardHomePageState extends State<WizardHomePage> {
       body: SafeArea(
         child: LayoutBuilder(
           builder: (context, constraints) {
-            final useDesktop =
-                _isDesktopPlatform || constraints.maxWidth >= 720;
+            final useDesktop = constraints.maxWidth >= 720;
             return useDesktop
                 ? _buildDesktopLayout(context)
                 : _buildMobileLayout(context);
@@ -5092,6 +5089,7 @@ class _ReviewTextStepState extends State<_ReviewTextStep> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final keyboardVisible = View.of(context).viewInsets.bottom > 0;
     final charCount = widget.textController.text.length;
     final previewText = widget.textController.text;
     final previewLabel = _previewMatches.length == 1
@@ -5099,7 +5097,10 @@ class _ReviewTextStepState extends State<_ReviewTextStep> {
         : '${_previewMatches.length} citas resaltadas';
     return SizedBox.expand(
       child: Padding(
-        padding: const EdgeInsets.all(20),
+        padding: EdgeInsets.symmetric(
+          horizontal: 20,
+          vertical: keyboardVisible ? 8 : 20,
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -5137,84 +5138,96 @@ class _ReviewTextStepState extends State<_ReviewTextStep> {
               ],
             ),
             const SizedBox(height: 12),
-            LayoutBuilder(
-              builder: (context, constraints) {
-                final previewPanel = _showPreview
-                    ? Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(10),
-                          color: theme.colorScheme.surfaceContainerLow,
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Vista previa de citas bíblicas',
-                              style: theme.textTheme.labelMedium?.copyWith(
-                                color: theme.colorScheme.primary,
-                                fontWeight: FontWeight.bold,
+            Expanded(
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final previewPanel = _showPreview
+                      ? Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(10),
+                            color: theme.colorScheme.surfaceContainerLow,
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Vista previa de citas bíblicas',
+                                style: theme.textTheme.labelMedium?.copyWith(
+                                  color: theme.colorScheme.primary,
+                                  fontWeight: FontWeight.bold,
+                                ),
                               ),
-                            ),
-                            const SizedBox(height: 8),
-                            Expanded(
-                              child: SingleChildScrollView(
-                                child: SelectableText.rich(
-                                  _buildHighlightedPreview(previewText),
-                                  style: theme.textTheme.bodyMedium?.copyWith(
-                                    height: 1.5,
+                              const SizedBox(height: 8),
+                              Expanded(
+                                child: SingleChildScrollView(
+                                  child: SelectableText.rich(
+                                    _buildHighlightedPreview(previewText),
+                                    style: theme.textTheme.bodyMedium?.copyWith(
+                                      height: 1.5,
+                                    ),
                                   ),
                                 ),
                               ),
-                            ),
-                          ],
-                        ),
-                      )
-                    : const SizedBox.shrink();
-                final editorField = TextField(
-                  key: const ValueKey('review-text-field'),
-                  controller: widget.textController,
-                  expands: true,
-                  maxLines: null,
-                  minLines: null,
-                  textAlignVertical: TextAlignVertical.top,
-                  decoration: const InputDecoration(
-                    border: OutlineInputBorder(),
-                    alignLabelWithHint: true,
-                  ),
-                );
+                            ],
+                          ),
+                        )
+                      : const SizedBox.shrink();
+                  final editorField = TextField(
+                    key: const ValueKey('review-text-field'),
+                    controller: widget.textController,
+                    expands: true,
+                    maxLines: null,
+                    minLines: null,
+                    textAlignVertical: TextAlignVertical.top,
+                    decoration: const InputDecoration(
+                      border: OutlineInputBorder(),
+                      alignLabelWithHint: true,
+                    ),
+                  );
 
-                return SizedBox(
-                  height: 320,
-                  child: _showPreview ? previewPanel : editorField,
-                );
-              },
+                  return SizedBox.expand(
+                    child: _showPreview ? previewPanel : editorField,
+                  );
+                },
+              ),
             ),
             const SizedBox(height: 10),
             Row(
               children: [
                 Expanded(
-                  child: Wrap(
-                    spacing: 12,
-                    runSpacing: 8,
-                    children: [
-                      Text(
-                        '$charCount caracteres',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
+                  key: const ValueKey('review-summary'),
+                  child: keyboardVisible
+                      ? Text(
+                          '$charCount car. · '
+                          '${_showPreview ? _previewMatches.length : 0} citas',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        )
+                      : Wrap(
+                          spacing: 12,
+                          runSpacing: 8,
+                          children: [
+                            Text(
+                              '$charCount caracteres',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                            Text(
+                              previewText.trim().isEmpty || !_showPreview
+                                  ? '0 citas resaltadas'
+                                  : previewLabel,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ],
                         ),
-                      ),
-                      Text(
-                        previewText.trim().isEmpty || !_showPreview
-                            ? '0 citas resaltadas'
-                            : previewLabel,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
-                  ),
                 ),
                 OutlinedButton(
                   onPressed: widget.onBack,

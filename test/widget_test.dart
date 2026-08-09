@@ -116,6 +116,63 @@ void main() {
     expect(find.text('Vista previa'), findsOneWidget);
   });
 
+  testWidgets('keeps review editing and navigation above a mobile keyboard', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetViewInsets);
+
+    await tester.pumpWidget(VerseCatchApp(bibleTextLookup: _fakeBibleLookup));
+    await tester.pumpAndSettle();
+
+    final sourceText = List.generate(
+      18,
+      (index) => 'Línea ${index + 1}',
+    ).join('\n');
+    await _enterTextAndAdvance(tester, sourceText);
+    await tester.tap(find.text('Editar'));
+    await tester.pumpAndSettle();
+
+    final reviewField = find.byKey(const ValueKey('review-text-field'));
+    await tester.tap(reviewField);
+    tester.view.viewInsets = const FakeViewPadding(bottom: 337);
+    await tester.pumpAndSettle();
+
+    await tester.enterText(reviewField, '$sourceText\nÚltima línea modificada');
+    await tester.pumpAndSettle();
+
+    const visibleBottom = 844.0 - 337.0;
+    final reviewSummary = find.byKey(const ValueKey('review-summary'));
+    final backButton = find.widgetWithText(OutlinedButton, 'Atrás');
+    final continueButton = find.widgetWithText(FilledButton, 'Continuar');
+    expect(reviewSummary, findsOneWidget);
+    expect(tester.getBottomRight(reviewField).dy, lessThan(visibleBottom));
+    expect(
+      tester.getBottomRight(reviewSummary).dx,
+      lessThanOrEqualTo(tester.getTopLeft(backButton).dx),
+    );
+    expect(
+      tester.getBottomRight(reviewSummary).dy,
+      lessThanOrEqualTo(visibleBottom),
+    );
+    expect(
+      tester.getBottomRight(backButton).dy,
+      lessThanOrEqualTo(visibleBottom),
+    );
+    expect(
+      tester.getBottomRight(continueButton).dy,
+      lessThanOrEqualTo(visibleBottom),
+    );
+    expect(
+      tester.widget<TextField>(reviewField).controller!.text,
+      endsWith('Última línea modificada'),
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets(
     'selects, zooms, and continues with an image from the empty frame',
     (WidgetTester tester) async {
