@@ -210,6 +210,96 @@ void main() {
     },
   );
 
+  testWidgets('shows OCR overlay immediately and keeps it for at least 6 seconds', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      VerseCatchApp(
+        bibleTextLookup: _fakeBibleLookup,
+        imageFilePicker: () async => 'assets/images/banner_demo.png',
+        ocrTextRecognizer: (imagePath) async {
+          await Future<void>.delayed(const Duration(seconds: 2));
+          return 'John 3:16';
+        },
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Elegir una imagen'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('empty-image-picker')));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('continue-selected-image')));
+    await tester.pump();
+
+    expect(find.byKey(const ValueKey('ocr-scan-overlay')), findsOneWidget);
+    expect(find.byKey(const ValueKey('selected-image-preview')), findsOneWidget);
+    expect(find.byKey(const ValueKey('ocr-hud-panel')), findsOneWidget);
+    expect(find.text('Revisar el texto reconocido'), findsNothing);
+
+    await tester.pump(const Duration(seconds: 5));
+    expect(find.byKey(const ValueKey('ocr-scan-overlay')), findsOneWidget);
+    expect(find.text('Revisar el texto reconocido'), findsNothing);
+
+    await tester.pump(const Duration(milliseconds: 1200));
+    expect(find.byKey(const ValueKey('ocr-scan-overlay')), findsOneWidget);
+    expect(find.text('Revisar el texto reconocido'), findsNothing);
+
+    await tester.pump(const Duration(milliseconds: 800));
+    expect(find.byKey(const ValueKey('ocr-scan-overlay')), findsOneWidget);
+
+    await tester.pump(const Duration(seconds: 8));
+  });
+
+  testWidgets('keeps scanning overlay active when OCR runs longer than 6 seconds', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      VerseCatchApp(
+        bibleTextLookup: _fakeBibleLookup,
+        imageFilePicker: () async => 'assets/images/banner_demo.png',
+        ocrTextRecognizer: (imagePath) async {
+          await Future<void>.delayed(const Duration(seconds: 8));
+          return 'John 3:16';
+        },
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Elegir una imagen'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('empty-image-picker')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('continue-selected-image')));
+    await tester.pump();
+
+    await tester.pump(const Duration(seconds: 6));
+    expect(find.byKey(const ValueKey('ocr-scan-overlay')), findsOneWidget);
+    expect(find.byKey(const ValueKey('selected-image-preview')), findsOneWidget);
+    expect(find.byKey(const ValueKey('ocr-hud-panel')), findsOneWidget);
+    expect(find.text('Revisar el texto reconocido'), findsNothing);
+
+    await tester.pump(const Duration(milliseconds: 2100));
+    expect(find.byKey(const ValueKey('ocr-scan-overlay')), findsOneWidget);
+    expect(find.text('Revisar el texto reconocido'), findsNothing);
+
+    await tester.pump(const Duration(milliseconds: 900));
+    expect(find.byKey(const ValueKey('ocr-scan-overlay')), findsOneWidget);
+
+    await tester.pump(const Duration(seconds: 8));
+  });
+
   testWidgets('moves to review step after entering text', (
     WidgetTester tester,
   ) async {

@@ -14,12 +14,14 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'package:versecatch/widgets/ocr_scan_overlay.dart';
 
 enum InputSource { text, image, camera }
 
 typedef BibleTextLookup =
     Future<String?> Function(String reference, int bibleVersionId);
 typedef ImageFilePicker = Future<String?> Function();
+typedef OcrTextRecognizer = Future<String> Function(String imagePath);
 
 const bool kEnableHistoryFeature = false;
 const bool kEnableTextExport = false;
@@ -269,10 +271,12 @@ class VerseCatchApp extends StatelessWidget {
     super.key,
     this.bibleTextLookup = lookupBibleTextFromYouVersion,
     this.imageFilePicker = pickImageFileFromDevice,
+    this.ocrTextRecognizer,
   });
 
   final BibleTextLookup bibleTextLookup;
   final ImageFilePicker imageFilePicker;
+  final OcrTextRecognizer? ocrTextRecognizer;
 
   @override
   Widget build(BuildContext context) {
@@ -286,6 +290,7 @@ class VerseCatchApp extends StatelessWidget {
       home: WizardHomePage(
         bibleTextLookup: bibleTextLookup,
         imageFilePicker: imageFilePicker,
+        ocrTextRecognizer: ocrTextRecognizer,
       ),
     );
   }
@@ -3065,6 +3070,8 @@ enum _FinishAction {
   exported,
 }
 
+enum _OcrVisualState { idle, scanning, completed, exiting, failed }
+
 extension _WizardStepLabel on _WizardStep {
   String get label => switch (this) {
     _WizardStep.chooseSource => 'Elegir origen',
@@ -3085,9 +3092,11 @@ class WizardHomePage extends StatefulWidget {
     super.key,
     required this.bibleTextLookup,
     required this.imageFilePicker,
+    this.ocrTextRecognizer,
   });
   final BibleTextLookup bibleTextLookup;
   final ImageFilePicker imageFilePicker;
+  final OcrTextRecognizer? ocrTextRecognizer;
 
   @override
   State<WizardHomePage> createState() => _WizardHomePageState();
@@ -3096,6 +3105,10 @@ class WizardHomePage extends StatefulWidget {
 class _WizardHomePageState extends State<WizardHomePage> {
   final _store = VerseCaptureStore.instance;
   static const _ocrChannel = MethodChannel('versecatch/ocr');
+  static const _minimumScanDuration = Duration(seconds: 6);
+  static const _scanCompletionHoldDuration = Duration(milliseconds: 400);
+  static const _minimumDetectionVisualDuration = Duration(milliseconds: 2200);
+  static const _detectionCompletionHoldDuration = Duration(milliseconds: 350);
 
   _WizardStep _step = _WizardStep.chooseSource;
   final Set<_WizardStep> _completedSteps = <_WizardStep>{};
@@ -3104,6 +3117,9 @@ class _WizardHomePageState extends State<WizardHomePage> {
   final _textController = TextEditingController();
   String? _imagePath;
   bool _processing = false;
+  _OcrVisualState _ocrVisualState = _OcrVisualState.idle;
+  bool _ocrFinished = false;
+  String? _ocrErrorMessage;
 
   List<({String reference, int count})> _groupedRefs = const [];
   String? _activeReference;
@@ -3124,6 +3140,8 @@ class _WizardHomePageState extends State<WizardHomePage> {
   bool _savedToHistory = false;
   _FinishAction _completedAction = _FinishAction.none;
   Duration? _detectionDuration;
+  bool _isDetectingReferences = false;
+  _OcrVisualState _reviewDetectionVisualState = _OcrVisualState.idle;
 
   bool get _supportsCameraCapture =>
       !kIsWeb && (Platform.isAndroid || Platform.isIOS);
@@ -3182,6 +3200,9 @@ class _WizardHomePageState extends State<WizardHomePage> {
       _source = null;
       _imagePath = null;
       _processing = false;
+      _ocrVisualState = _OcrVisualState.idle;
+      _ocrFinished = false;
+      _ocrErrorMessage = null;
       _groupedRefs = const [];
       _activeReference = null;
       _currentRefIndex = 0;
@@ -3194,6 +3215,8 @@ class _WizardHomePageState extends State<WizardHomePage> {
       _completedAction = _FinishAction.none;
       _cancelCurrentAction = false;
       _detectionDuration = null;
+      _isDetectingReferences = false;
+      _reviewDetectionVisualState = _OcrVisualState.idle;
     });
     _loadHistory();
   }
@@ -3225,30 +3248,69 @@ class _WizardHomePageState extends State<WizardHomePage> {
   }
 
   Future<void> _runDetection() async {
+    if (_isDetectingReferences) return;
     final text = _textController.text.trim();
     if (text.isEmpty) return;
-    final start = DateTime.now();
+    final visualStart = DateTime.now();
+    final detectionStart = DateTime.now();
+
+    List<({String reference, int count})> grouped = const [];
+    String? firstReference;
+
     setState(() {
       _completedSteps.add(_WizardStep.reviewText);
-      _step = _WizardStep.detectRefs;
+      _isDetectingReferences = true;
+      _reviewDetectionVisualState = _OcrVisualState.scanning;
     });
-    final matches = extractVerseMatches(text);
-    final counts = <String, int>{};
-    for (final m in matches) {
-      counts[m.reference] = (counts[m.reference] ?? 0) + 1;
+
+    try {
+      final matches = await Future<List<VerseMatch>>.microtask(
+        () => extractVerseMatches(text),
+      );
+      final counts = <String, int>{};
+      for (final m in matches) {
+        counts[m.reference] = (counts[m.reference] ?? 0) + 1;
+      }
+      grouped = counts.entries
+          .map((e) => (reference: e.key, count: e.value))
+          .toList(growable: false);
+      if (grouped.isNotEmpty) {
+        firstReference = grouped.first.reference;
+      }
+    } finally {
+      final elapsedVisual = DateTime.now().difference(visualStart);
+      final remaining = _minimumDetectionVisualDuration - elapsedVisual;
+      if (remaining > Duration.zero) {
+        await Future<void>.delayed(remaining);
+      }
     }
-    final grouped = counts.entries
-        .map((e) => (reference: e.key, count: e.value))
-        .toList(growable: false);
-    final duration = DateTime.now().difference(start);
+
     if (!mounted) return;
+
+    final duration = DateTime.now().difference(detectionStart);
+
     setState(() {
+      _reviewDetectionVisualState = _OcrVisualState.completed;
       _groupedRefs = grouped;
       _detectionDuration = duration;
-      if (grouped.isNotEmpty) {
-        _activeReference = grouped.first.reference;
+      if (firstReference != null) {
+        _activeReference = firstReference;
         _currentRefIndex = 0;
       }
+    });
+
+    await Future<void>.delayed(_detectionCompletionHoldDuration);
+    if (!mounted) return;
+
+    setState(() => _reviewDetectionVisualState = _OcrVisualState.exiting);
+
+    await Future<void>.delayed(_detectionCompletionHoldDuration);
+    if (!mounted) return;
+
+    setState(() {
+      _isDetectingReferences = false;
+      _reviewDetectionVisualState = _OcrVisualState.idle;
+      _step = _WizardStep.detectRefs;
     });
   }
 
@@ -3901,26 +3963,18 @@ class _WizardHomePageState extends State<WizardHomePage> {
   Future<void> _pickImage() async {
     final path = await widget.imageFilePicker();
     if (path == null) return;
-    setState(() => _imagePath = path);
+    setState(() {
+      _imagePath = path;
+      _ocrVisualState = _OcrVisualState.idle;
+      _ocrFinished = false;
+      _ocrErrorMessage = null;
+    });
   }
 
   Future<void> _processSelectedImage() async {
     final path = _imagePath;
     if (path == null || !File(path).existsSync()) return;
-    setState(() => _processing = true);
-    try {
-      _textController.text = await _runOcr(path);
-      _advanceToReview();
-    } catch (e, st) {
-      debugPrint('OCR error: $e\n$st');
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('OCR falló: $e')));
-      }
-    } finally {
-      if (mounted) setState(() => _processing = false);
-    }
+    await _runImageOcrFlow(path: path, backToSourceOnFailure: false);
   }
 
   Future<void> _openCamera() async {
@@ -3946,24 +4000,75 @@ class _WizardHomePageState extends State<WizardHomePage> {
       setState(() => _step = _WizardStep.chooseSource);
       return;
     }
+    setState(() => _imagePath = imagePath);
+    await _runImageOcrFlow(path: imagePath, backToSourceOnFailure: true);
+  }
+
+  Future<void> _runImageOcrFlow({
+    required String path,
+    required bool backToSourceOnFailure,
+  }) async {
+    final startedAt = DateTime.now();
     setState(() {
       _processing = true;
-      _imagePath = imagePath;
+      _ocrFinished = false;
+      _ocrErrorMessage = null;
+      _ocrVisualState = _OcrVisualState.scanning;
     });
+
+    String? recognizedText;
+    Object? failure;
+
     try {
-      _textController.text = await _runOcr(imagePath);
-      _advanceToReview();
-    } catch (e, st) {
-      debugPrint('OCR error: $e\n$st');
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('OCR falló: $e')));
+      recognizedText = await _performOcr(path);
+    } catch (error, stackTrace) {
+      failure = error;
+      debugPrint('OCR error: $error\n$stackTrace');
+    }
+
+    final elapsed = DateTime.now().difference(startedAt);
+    final remaining = _minimumScanDuration - elapsed;
+    if (remaining > Duration.zero) {
+      await Future<void>.delayed(remaining);
+    }
+    if (!mounted) return;
+
+    if (failure != null) {
+      setState(() {
+        _processing = false;
+        _ocrFinished = false;
+        _ocrVisualState = _OcrVisualState.failed;
+        _ocrErrorMessage = 'No fue posible reconocer el texto';
+      });
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('OCR falló: $failure')));
+      if (backToSourceOnFailure) {
         setState(() => _step = _WizardStep.chooseSource);
       }
-    } finally {
-      if (mounted) setState(() => _processing = false);
+      return;
     }
+
+    setState(() {
+      _textController.text = recognizedText ?? '';
+      _processing = false;
+      _ocrFinished = true;
+      _ocrVisualState = _OcrVisualState.completed;
+      _ocrErrorMessage = null;
+    });
+
+    await Future<void>.delayed(_scanCompletionHoldDuration);
+    if (!mounted) return;
+
+    setState(() => _ocrVisualState = _OcrVisualState.exiting);
+    await Future<void>.delayed(_scanCompletionHoldDuration);
+    if (!mounted) return;
+
+    setState(() {
+      _ocrVisualState = _OcrVisualState.idle;
+      _ocrFinished = false;
+    });
+    _advanceToReview();
   }
 
   Future<String> _runOcr(String imagePath) async {
@@ -3982,6 +4087,14 @@ class _WizardHomePageState extends State<WizardHomePage> {
         } on FileSystemException catch (_) {}
       }
     }
+  }
+
+  Future<String> _performOcr(String imagePath) {
+    final recognizer = widget.ocrTextRecognizer;
+    if (recognizer != null) {
+      return recognizer(imagePath);
+    }
+    return _runOcr(imagePath);
   }
 
   Future<({String path, bool temporary})> _prepareOcrImage(
@@ -4085,6 +4198,9 @@ class _WizardHomePageState extends State<WizardHomePage> {
         textController: _textController,
         imagePath: _imagePath,
         processing: _processing,
+        ocrVisualState: _ocrVisualState,
+        ocrFinished: _ocrFinished,
+        ocrErrorMessage: _ocrErrorMessage,
         history: _history,
         onPickFile: _pickTextFile,
         onPickImage: _pickImage,
@@ -4098,6 +4214,8 @@ class _WizardHomePageState extends State<WizardHomePage> {
       ),
       _WizardStep.reviewText => _ReviewTextStep(
         textController: _textController,
+        detectingReferences: _isDetectingReferences,
+        detectionVisualState: _reviewDetectionVisualState,
         onBack: () => setState(() => _step = _WizardStep.acquireContent),
         onContinue: _runDetection,
       ),
@@ -4609,6 +4727,9 @@ class _AcquireContentStep extends StatelessWidget {
     required this.textController,
     required this.imagePath,
     required this.processing,
+    required this.ocrVisualState,
+    required this.ocrFinished,
+    required this.ocrErrorMessage,
     required this.history,
     required this.onPickFile,
     required this.onPickImage,
@@ -4621,6 +4742,9 @@ class _AcquireContentStep extends StatelessWidget {
   final TextEditingController textController;
   final String? imagePath;
   final bool processing;
+  final _OcrVisualState ocrVisualState;
+  final bool ocrFinished;
+  final String? ocrErrorMessage;
   final List<CaptureRecord> history;
   final VoidCallback onPickFile;
   final VoidCallback onPickImage;
@@ -4641,12 +4765,25 @@ class _AcquireContentStep extends StatelessWidget {
         onPickFile: onPickFile,
       ),
       _WizardSource.image => _ImagePickerContent(
+        source: source,
         imagePath: imagePath,
         processing: processing,
+        ocrVisualState: ocrVisualState,
+        ocrFinished: ocrFinished,
+        ocrErrorMessage: ocrErrorMessage,
         onPickImage: onPickImage,
         onContinue: onContinueImage,
       ),
-      _WizardSource.camera => _CameraLoadingContent(processing: processing),
+      _WizardSource.camera => _ImagePickerContent(
+        source: source,
+        imagePath: imagePath,
+        processing: processing,
+        ocrVisualState: ocrVisualState,
+        ocrFinished: ocrFinished,
+        ocrErrorMessage: ocrErrorMessage,
+        onPickImage: onOpenCamera,
+        onContinue: onContinueImage,
+      ),
       _WizardSource.history => _HistoryListContent(
         history: history,
         onSelect: onHistorySelect,
@@ -4766,13 +4903,21 @@ class _FilePickerContent extends StatelessWidget {
 
 class _ImagePickerContent extends StatelessWidget {
   const _ImagePickerContent({
+    required this.source,
     required this.imagePath,
     required this.processing,
+    required this.ocrVisualState,
+    required this.ocrFinished,
+    required this.ocrErrorMessage,
     required this.onPickImage,
     required this.onContinue,
   });
+  final _WizardSource source;
   final String? imagePath;
   final bool processing;
+  final _OcrVisualState ocrVisualState;
+  final bool ocrFinished;
+  final String? ocrErrorMessage;
   final VoidCallback onPickImage;
   final VoidCallback onContinue;
 
@@ -4780,12 +4925,41 @@ class _ImagePickerContent extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final hasImage = imagePath != null && File(imagePath!).existsSync();
+    final mutedStatusTextStyle = theme.textTheme.bodySmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.72),
+      fontWeight: FontWeight.w400,
+      letterSpacing: 0.2,
+      fontSize: 12,
+    );
+    final isCameraSource = source == _WizardSource.camera;
+    final showOverlay = hasImage && ocrVisualState != _OcrVisualState.idle;
+    final pickButtonLabel = isCameraSource
+        ? (hasImage ? 'Tomar otra fotografía' : 'Tomar fotografía')
+        : (hasImage ? 'Cambiar imagen' : 'Elegir imagen');
+    final pickButtonIcon = isCameraSource
+        ? Icons.camera_alt_outlined
+        : hasImage
+        ? Icons.refresh_outlined
+        : Icons.photo_library_outlined;
+
+    OcrOverlayState mapOverlayState() {
+      return switch (ocrVisualState) {
+        _OcrVisualState.failed => OcrOverlayState.failed,
+        _OcrVisualState.completed || _OcrVisualState.exiting =>
+          OcrOverlayState.completed,
+        _ => OcrOverlayState.scanning,
+      };
+    }
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text('Selecciona una imagen', style: theme.textTheme.titleMedium),
+          Text(
+            isCameraSource ? 'Tomar fotografía' : 'Selecciona una imagen',
+            style: theme.textTheme.titleMedium,
+          ),
           const SizedBox(height: 16),
           if (hasImage)
             Container(
@@ -4797,17 +4971,13 @@ class _ImagePickerContent extends StatelessWidget {
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: theme.colorScheme.outlineVariant),
               ),
-              child: InteractiveViewer(
-                minScale: 1,
-                maxScale: 5,
-                child: Center(
-                  child: Image.file(
-                    File(imagePath!),
-                    width: double.infinity,
-                    height: double.infinity,
-                    fit: BoxFit.contain,
-                  ),
-                ),
+              child: _ImageViewportOverlay(
+                imagePath: imagePath!,
+                showOverlay: showOverlay,
+                exiting: ocrVisualState == _OcrVisualState.exiting,
+                processing: processing,
+                overlayState: mapOverlayState(),
+                ocrErrorMessage: ocrErrorMessage,
               ),
             )
           else
@@ -4828,13 +4998,15 @@ class _ImagePickerContent extends StatelessWidget {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Icon(
-                      Icons.image_outlined,
+                      isCameraSource
+                          ? Icons.camera_alt_outlined
+                          : Icons.image_outlined,
                       size: 48,
                       color: theme.colorScheme.primary,
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'Sin imagen',
+                      isCameraSource ? 'Sin fotografía' : 'Sin imagen',
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: theme.colorScheme.onSurfaceVariant,
                       ),
@@ -4855,28 +5027,14 @@ class _ImagePickerContent extends StatelessWidget {
                       color: Colors.white,
                     ),
                   )
-                : Icon(
-                    hasImage
-                        ? Icons.refresh_outlined
-                        : Icons.photo_library_outlined,
-                  ),
-            label: Text(
-              processing
-                  ? 'Procesando OCR…'
-                  : hasImage
-                  ? 'Cambiar imagen'
-                  : 'Elegir imagen',
-            ),
+                : Icon(pickButtonIcon),
+            label: Text(processing ? 'Analizando…' : pickButtonLabel),
           ),
-          if (processing) ...[
+          if (processing && hasImage) ...[
             const SizedBox(height: 12),
-            const LinearProgressIndicator(),
-            const SizedBox(height: 8),
             Text(
-              'Extrayendo texto con OCR…',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
+              'Escaneando imagen con OCR...',
+              style: mutedStatusTextStyle,
             ),
           ] else if (hasImage) ...[
             const SizedBox(height: 12),
@@ -4887,30 +5045,167 @@ class _ImagePickerContent extends StatelessWidget {
               label: const Text('Continuar'),
             ),
           ],
+          if (ocrVisualState == _OcrVisualState.failed && !processing) ...[
+            const SizedBox(height: 10),
+            Text(
+              ocrErrorMessage ?? 'No fue posible reconocer el texto',
+              style: mutedStatusTextStyle,
+            ),
+          ],
+          if (ocrFinished && !processing) ...[
+            const SizedBox(height: 10),
+            Text(
+              'Texto identificado ✓',
+              style: mutedStatusTextStyle,
+            ),
+          ],
         ],
       ),
     );
   }
 }
 
-class _CameraLoadingContent extends StatelessWidget {
-  const _CameraLoadingContent({required this.processing});
+class _ImageViewportOverlay extends StatefulWidget {
+  const _ImageViewportOverlay({
+    required this.imagePath,
+    required this.showOverlay,
+    required this.exiting,
+    required this.processing,
+    required this.overlayState,
+    required this.ocrErrorMessage,
+  });
+
+  final String imagePath;
+  final bool showOverlay;
+  final bool exiting;
   final bool processing;
+  final OcrOverlayState overlayState;
+  final String? ocrErrorMessage;
+
+  @override
+  State<_ImageViewportOverlay> createState() => _ImageViewportOverlayState();
+}
+
+class _ImageViewportOverlayState extends State<_ImageViewportOverlay> {
+  Size? _sourceImageSize;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSourceImageSize();
+  }
+
+  @override
+  void didUpdateWidget(covariant _ImageViewportOverlay oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.imagePath != widget.imagePath) {
+      _sourceImageSize = null;
+      _loadSourceImageSize();
+    }
+  }
+
+  Future<void> _loadSourceImageSize() async {
+    try {
+      final bytes = await File(widget.imagePath).readAsBytes();
+      final decoded = img.decodeImage(bytes);
+      if (!mounted || decoded == null) return;
+      setState(() {
+        _sourceImageSize = Size(
+          decoded.width.toDouble(),
+          decoded.height.toDouble(),
+        );
+      });
+    } catch (_) {}
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const CircularProgressIndicator(),
-          const SizedBox(height: 16),
-          Text(
-            processing ? 'Procesando imagen…' : 'Abriendo cámara…',
-            style: Theme.of(context).textTheme.bodyMedium,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final viewportWidth = constraints.maxWidth;
+        final viewportHeight = constraints.maxHeight;
+        final source = _sourceImageSize;
+
+        if (source == null || viewportWidth <= 0 || viewportHeight <= 0) {
+          return Stack(
+            fit: StackFit.expand,
+            children: [
+              InteractiveViewer(
+                minScale: 1,
+                maxScale: 5,
+                child: Center(
+                  child: Image.file(
+                    File(widget.imagePath),
+                    width: double.infinity,
+                    height: double.infinity,
+                    fit: BoxFit.contain,
+                  ),
+                ),
+              ),
+              if (widget.showOverlay)
+                AnimatedOpacity(
+                  duration: const Duration(milliseconds: 400),
+                  opacity: widget.exiting ? 0 : 1,
+                  child: OcrScanOverlay(
+                    active: widget.processing,
+                    state: widget.overlayState,
+                    showHud: true,
+                    errorMessage: widget.ocrErrorMessage,
+                  ),
+                ),
+            ],
+          );
+        }
+
+        final imageAspectRatio = source.width / source.height;
+        final viewportAspectRatio = viewportWidth / viewportHeight;
+
+        late final double surfaceWidth;
+        late final double surfaceHeight;
+        if (imageAspectRatio > viewportAspectRatio) {
+          surfaceWidth = viewportWidth;
+          surfaceHeight = viewportWidth / imageAspectRatio;
+        } else {
+          surfaceHeight = viewportHeight;
+          surfaceWidth = viewportHeight * imageAspectRatio;
+        }
+
+        return InteractiveViewer(
+          minScale: 1,
+          maxScale: 5,
+          child: SizedBox(
+            width: viewportWidth,
+            height: viewportHeight,
+            child: Center(
+              child: SizedBox(
+                key: const ValueKey('selected-image-surface'),
+                width: surfaceWidth,
+                height: surfaceHeight,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    Image.file(
+                      File(widget.imagePath),
+                      fit: BoxFit.fill,
+                    ),
+                    if (widget.showOverlay)
+                      AnimatedOpacity(
+                        duration: const Duration(milliseconds: 400),
+                        opacity: widget.exiting ? 0 : 1,
+                        child: OcrScanOverlay(
+                          active: widget.processing,
+                          state: widget.overlayState,
+                          showHud: true,
+                          errorMessage: widget.ocrErrorMessage,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 }
@@ -5016,12 +5311,16 @@ class _HistoryListContent extends StatelessWidget {
 class _ReviewTextStep extends StatefulWidget {
   const _ReviewTextStep({
     required this.textController,
+    required this.detectingReferences,
+    required this.detectionVisualState,
     required this.onBack,
     required this.onContinue,
   });
   final TextEditingController textController;
+  final bool detectingReferences;
+  final _OcrVisualState detectionVisualState;
   final VoidCallback onBack;
-  final VoidCallback onContinue;
+  final Future<void> Function() onContinue;
 
   @override
   State<_ReviewTextStep> createState() => _ReviewTextStepState();
@@ -5090,11 +5389,21 @@ class _ReviewTextStepState extends State<_ReviewTextStep> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final keyboardVisible = View.of(context).viewInsets.bottom > 0;
+    final isBusy = widget.detectingReferences;
     final charCount = widget.textController.text.length;
     final previewText = widget.textController.text;
     final previewLabel = _previewMatches.length == 1
         ? '1 cita resaltada'
         : '${_previewMatches.length} citas resaltadas';
+
+    OcrOverlayState mapOverlayState() {
+      return switch (widget.detectionVisualState) {
+        _OcrVisualState.completed || _OcrVisualState.exiting =>
+          OcrOverlayState.completed,
+        _ => OcrOverlayState.scanning,
+      };
+    }
+
     return SizedBox.expand(
       child: Padding(
         padding: EdgeInsets.symmetric(
@@ -5126,7 +5435,9 @@ class _ReviewTextStepState extends State<_ReviewTextStep> {
                 ),
                 OutlinedButton.icon(
                   key: const ValueKey('review-mode-toggle'),
-                  onPressed: previewText.trim().isEmpty ? null : _toggleMode,
+                  onPressed: (previewText.trim().isEmpty || isBusy)
+                      ? null
+                      : _toggleMode,
                   icon: Icon(
                     _showPreview
                         ? Icons.edit_outlined
@@ -5188,7 +5499,26 @@ class _ReviewTextStepState extends State<_ReviewTextStep> {
                   );
 
                   return SizedBox.expand(
-                    child: _showPreview ? previewPanel : editorField,
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        _showPreview ? previewPanel : editorField,
+                        if (widget.detectionVisualState != _OcrVisualState.idle)
+                          AnimatedOpacity(
+                            duration: const Duration(milliseconds: 280),
+                            opacity:
+                                widget.detectionVisualState ==
+                                    _OcrVisualState.exiting
+                                ? 0
+                                : 1,
+                            child: OcrScanOverlay(
+                              active: widget.detectingReferences,
+                              state: mapOverlayState(),
+                              showHud: true,
+                            ),
+                          ),
+                      ],
+                    ),
                   );
                 },
               ),
@@ -5230,12 +5560,14 @@ class _ReviewTextStepState extends State<_ReviewTextStep> {
                         ),
                 ),
                 OutlinedButton(
-                  onPressed: widget.onBack,
+                  onPressed: isBusy ? null : widget.onBack,
                   child: const Text('Atrás'),
                 ),
                 const SizedBox(width: 8),
                 FilledButton.icon(
-                  onPressed: charCount > 0 ? widget.onContinue : null,
+                  onPressed: charCount > 0 && !isBusy
+                      ? () => widget.onContinue()
+                      : null,
                   icon: const Icon(Icons.arrow_forward, size: 18),
                   label: const Text('Continuar'),
                 ),
