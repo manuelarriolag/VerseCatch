@@ -33,6 +33,10 @@ const String kNoBibleTextMessage =
 const String kLoadingBibleTextMessage = 'Loading biblical text...';
 const String kIncludeBibleTextSettingKey = 'include_bible_text_in_output';
 const String kExportDirectorySettingKey = 'export_directory_path';
+const String kReduceMotionSettingKey = 'reduce_motion_enabled';
+const String kExportHistorySettingKey = 'export_history_json';
+const double kWizardSectionSpacing = 16;
+const double kWizardPanelSpacing = 12;
 const String kAppEnvironment = String.fromEnvironment(
   'APP_ENV',
   defaultValue: 'development',
@@ -280,12 +284,46 @@ class VerseCatchApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = ColorScheme.fromSeed(seedColor: Colors.indigo);
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: '$kAppTitle $kAppVersionLabel',
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo),
+        colorScheme: colorScheme,
         useMaterial3: true,
+        filledButtonTheme: FilledButtonThemeData(
+          style: FilledButton.styleFrom(
+            disabledBackgroundColor: colorScheme.onSurface.withValues(
+              alpha: 0.18,
+            ),
+            disabledForegroundColor: colorScheme.onSurface.withValues(
+              alpha: 0.62,
+            ),
+          ),
+        ),
+        outlinedButtonTheme: OutlinedButtonThemeData(
+          style: OutlinedButton.styleFrom(
+            side: BorderSide(color: colorScheme.outline),
+            disabledForegroundColor: colorScheme.onSurface.withValues(
+              alpha: 0.52,
+            ),
+          ),
+        ),
+        iconButtonTheme: IconButtonThemeData(
+          style: IconButton.styleFrom(
+            disabledForegroundColor: colorScheme.onSurface.withValues(
+              alpha: 0.52,
+            ),
+          ),
+        ),
+        chipTheme: ChipThemeData(
+          side: BorderSide(color: colorScheme.outline),
+          selectedColor: colorScheme.primaryContainer,
+          disabledColor: colorScheme.surfaceContainerHighest,
+          labelStyle: TextStyle(color: colorScheme.onSurface),
+          secondaryLabelStyle: TextStyle(color: colorScheme.onPrimaryContainer),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        ),
       ),
       home: WizardHomePage(
         bibleTextLookup: bibleTextLookup,
@@ -1979,6 +2017,35 @@ class CaptureRecord {
   }
 }
 
+class ExportHistoryItem {
+  const ExportHistoryItem({
+    required this.timestamp,
+    required this.format,
+    required this.filePath,
+  });
+
+  final DateTime timestamp;
+  final String format;
+  final String filePath;
+
+  Map<String, Object?> toMap() {
+    return {
+      'timestamp': timestamp.toIso8601String(),
+      'format': format,
+      'file_path': filePath,
+    };
+  }
+
+  factory ExportHistoryItem.fromMap(Map<String, Object?> map) {
+    return ExportHistoryItem(
+      timestamp: DateTime.tryParse(map['timestamp'] as String? ?? '') ??
+          DateTime.fromMillisecondsSinceEpoch(0),
+      format: map['format'] as String? ?? 'txt',
+      filePath: map['file_path'] as String? ?? '',
+    );
+  }
+}
+
 class BibleVersionOption {
   const BibleVersionOption({
     required this.id,
@@ -2113,6 +2180,73 @@ class VerseCaptureStore {
       'value': path,
     }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
+
+  Future<bool> reduceMotionEnabled() async {
+    final db = await _db;
+    final rows = await db.query(
+      'app_settings',
+      columns: const ['value'],
+      where: 'key = ?',
+      whereArgs: const [_kReduceMotionSettingKey],
+      limit: 1,
+    );
+    if (rows.isEmpty) return false;
+    return (rows.first['value'] as String?) == 'true';
+  }
+
+  Future<void> setReduceMotionEnabled(bool value) async {
+    final db = await _db;
+    await db.insert('app_settings', <String, Object?>{
+      'key': _kReduceMotionSettingKey,
+      'value': value ? 'true' : 'false',
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  Future<List<ExportHistoryItem>> recentExports({int limit = 5}) async {
+    final db = await _db;
+    final rows = await db.query(
+      'app_settings',
+      columns: const ['value'],
+      where: 'key = ?',
+      whereArgs: const [_kExportHistorySettingKey],
+      limit: 1,
+    );
+    if (rows.isEmpty) return const [];
+    final json = rows.first['value'] as String?;
+    if (json == null || json.isEmpty) return const [];
+    final decoded = jsonDecode(json);
+    if (decoded is! List) return const [];
+    final parsed = decoded
+        .whereType<Map>()
+        .map(
+          (item) => ExportHistoryItem.fromMap(
+            item.map(
+              (key, value) => MapEntry(key.toString(), value),
+            ),
+          ),
+        )
+        .where((item) => item.filePath.trim().isNotEmpty)
+        .toList(growable: false);
+    if (parsed.length <= limit) return parsed;
+    return parsed.take(limit).toList(growable: false);
+  }
+
+  Future<void> pushExportHistory(ExportHistoryItem item, {int limit = 5}) async {
+    final current = await recentExports(limit: limit);
+    final deduped = <ExportHistoryItem>[item];
+    for (final existing in current) {
+      if (existing.filePath == item.filePath && existing.format == item.format) {
+        continue;
+      }
+      deduped.add(existing);
+      if (deduped.length >= limit) break;
+    }
+    final db = await _db;
+    await db.insert('app_settings', <String, Object?>{
+      'key': _kExportHistorySettingKey,
+      'value': jsonEncode(deduped.map((entry) => entry.toMap()).toList()),
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
 }
 
 const String _kCreateCapturesTableSql = '''
@@ -2135,6 +2269,8 @@ const String _kCreateSettingsTableSql = '''
 const String _kBibleVersionSettingKey = 'selected_bible_version_id';
 const String _kIncludeBibleTextSettingKey = 'include_bible_text_in_output';
 const String _kExportDirectorySettingKey = 'export_directory_path';
+const String _kReduceMotionSettingKey = 'reduce_motion_enabled';
+const String _kExportHistorySettingKey = 'export_history_json';
 
 List<String> extractVerseReferences(String text) {
   final normalized = text.replaceAll(RegExp(r'\s+'), ' ').trim();
@@ -3135,6 +3271,11 @@ class _WizardHomePageState extends State<WizardHomePage> {
   bool _includeBibleTextInOutput = false;
   String? _exportDirectoryPath;
   bool _cancelCurrentAction = false;
+  bool _reduceMotionEnabled = false;
+  List<ExportHistoryItem> _recentExports = const [];
+  int _imageQuarterTurns = 0;
+  Rect _imageCropRect = const Rect.fromLTWH(0, 0, 1, 1);
+  bool _showCompactRefsView = true;
 
   List<CaptureRecord> _history = const [];
   bool _savedToHistory = false;
@@ -3178,11 +3319,20 @@ class _WizardHomePageState extends State<WizardHomePage> {
   Future<void> _loadOutputPreferences() async {
     final includeBibleText = await _store.includeBibleTextInOutput();
     final exportDirectory = await _store.exportDirectoryPath();
+    final reduceMotion = await _store.reduceMotionEnabled();
+    final exports = await _store.recentExports(limit: 5);
     if (!mounted) return;
     setState(() {
       _includeBibleTextInOutput = includeBibleText;
       _exportDirectoryPath = exportDirectory;
+      _reduceMotionEnabled = reduceMotion;
+      _recentExports = exports;
     });
+  }
+
+  Duration _motionDuration(Duration duration) {
+    if (_reduceMotionEnabled) return Duration.zero;
+    return duration;
   }
 
   BibleVersionOption _selectedBibleVersionOption() {
@@ -3217,6 +3367,9 @@ class _WizardHomePageState extends State<WizardHomePage> {
       _detectionDuration = null;
       _isDetectingReferences = false;
       _reviewDetectionVisualState = _OcrVisualState.idle;
+      _imageQuarterTurns = 0;
+      _imageCropRect = const Rect.fromLTWH(0, 0, 1, 1);
+      _showCompactRefsView = true;
     });
     _loadHistory();
   }
@@ -3279,7 +3432,7 @@ class _WizardHomePageState extends State<WizardHomePage> {
       }
     } finally {
       final elapsedVisual = DateTime.now().difference(visualStart);
-      final remaining = _minimumDetectionVisualDuration - elapsedVisual;
+      final remaining = _motionDuration(_minimumDetectionVisualDuration) - elapsedVisual;
       if (remaining > Duration.zero) {
         await Future<void>.delayed(remaining);
       }
@@ -3299,12 +3452,12 @@ class _WizardHomePageState extends State<WizardHomePage> {
       }
     });
 
-    await Future<void>.delayed(_detectionCompletionHoldDuration);
+    await Future<void>.delayed(_motionDuration(_detectionCompletionHoldDuration));
     if (!mounted) return;
 
     setState(() => _reviewDetectionVisualState = _OcrVisualState.exiting);
 
-    await Future<void>.delayed(_detectionCompletionHoldDuration);
+    await Future<void>.delayed(_motionDuration(_detectionCompletionHoldDuration));
     if (!mounted) return;
 
     setState(() {
@@ -3391,6 +3544,141 @@ class _WizardHomePageState extends State<WizardHomePage> {
   Future<void> _toggleIncludeBibleText(bool value) async {
     setState(() => _includeBibleTextInOutput = value);
     await _store.setIncludeBibleTextInOutput(value);
+  }
+
+  Future<void> _toggleReduceMotion(bool value) async {
+    setState(() => _reduceMotionEnabled = value);
+    await _store.setReduceMotionEnabled(value);
+  }
+
+  void _rotateSelectedImage() {
+    setState(() => _imageQuarterTurns = (_imageQuarterTurns + 1) % 4);
+  }
+
+  Future<void> _refreshExportHistory() async {
+    final exports = await _store.recentExports(limit: 5);
+    if (!mounted) return;
+    setState(() => _recentExports = exports);
+  }
+
+  void _toggleExploreViewMode(bool compactView) {
+    setState(() => _showCompactRefsView = compactView);
+  }
+
+  Future<void> _openCropDialog() async {
+    final path = _imagePath;
+    if (path == null || !File(path).existsSync()) return;
+    Rect draft = _imageCropRect;
+
+    final result = await showDialog<Rect>(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            Rect normalize(Rect value) {
+              const minSize = 0.12;
+              final width = value.width.clamp(minSize, 1.0);
+              final height = value.height.clamp(minSize, 1.0);
+              final left = value.left.clamp(0.0, 1.0 - width);
+              final top = value.top.clamp(0.0, 1.0 - height);
+              return Rect.fromLTWH(left, top, width, height);
+            }
+
+            void updateRect(Rect value) {
+              setDialogState(() => draft = normalize(value));
+            }
+
+            return AlertDialog(
+              title: const Text('Recortar imagen'),
+              content: SizedBox(
+                width: 480,
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      SizedBox(
+                        height: 240,
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(10),
+                          child: _CropSelectionPreview(
+                            imagePath: path,
+                            cropRect: draft,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: kWizardPanelSpacing),
+                      Text('Horizontal ${((draft.left + (draft.width / 2)) * 100).round()}%'),
+                      Slider(
+                        value: draft.left,
+                        min: 0,
+                        max: 1 - draft.width,
+                        onChanged: (v) => updateRect(
+                          Rect.fromLTWH(v, draft.top, draft.width, draft.height),
+                        ),
+                      ),
+                      Text('Vertical ${((draft.top + (draft.height / 2)) * 100).round()}%'),
+                      Slider(
+                        value: draft.top,
+                        min: 0,
+                        max: 1 - draft.height,
+                        onChanged: (v) => updateRect(
+                          Rect.fromLTWH(draft.left, v, draft.width, draft.height),
+                        ),
+                      ),
+                      Text('Ancho ${(draft.width * 100).round()}%'),
+                      Slider(
+                        value: draft.width,
+                        min: 0.12,
+                        max: 1,
+                        onChanged: (v) => updateRect(
+                          Rect.fromLTWH(draft.left, draft.top, v, draft.height),
+                        ),
+                      ),
+                      Text('Alto ${(draft.height * 100).round()}%'),
+                      Slider(
+                        value: draft.height,
+                        min: 0.12,
+                        max: 1,
+                        onChanged: (v) => updateRect(
+                          Rect.fromLTWH(draft.left, draft.top, draft.width, v),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => updateRect(const Rect.fromLTWH(0, 0, 1, 1)),
+                  child: const Text('Restablecer'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  child: const Text('Cancelar'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(draft),
+                  child: const Text('Aplicar'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (result == null || !mounted) return;
+    setState(() => _imageCropRect = result);
+  }
+
+  Future<void> _retryExportFromHistory(ExportHistoryItem item) async {
+    final path = item.filePath.trim();
+    if (path.isEmpty) return;
+    await _exportText(
+      presetDirectoryPath: p.dirname(path),
+      presetFileName: p.basename(path),
+    );
   }
 
   Future<({String content, String? warning})>
@@ -3602,7 +3890,7 @@ class _WizardHomePageState extends State<WizardHomePage> {
         completed: true,
       );
       refreshDialog?.call();
-      await Future<void>.delayed(const Duration(milliseconds: 650));
+      await Future<void>.delayed(_motionDuration(const Duration(milliseconds: 650)));
       if (Navigator.canPop(context)) {
         Navigator.of(context).pop();
       }
@@ -3617,6 +3905,83 @@ class _WizardHomePageState extends State<WizardHomePage> {
     } finally {
       _cancelCurrentAction = false;
     }
+  }
+
+  Future<bool> _confirmOutputPreview({
+    required String sourceText,
+    required String citationsText,
+    required String finalText,
+    String actionLabel = 'Continuar',
+  }) async {
+    if (!mounted) return false;
+    final accepted = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        final theme = Theme.of(dialogContext);
+        Widget buildPane(String text) {
+          return Container(
+            width: double.infinity,
+            height: 260,
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surfaceContainerLow,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: theme.colorScheme.outlineVariant),
+            ),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(12),
+              child: SelectableText(
+                text.trim().isEmpty ? '(Sin contenido)' : text,
+                style: theme.textTheme.bodySmall,
+              ),
+            ),
+          );
+        }
+
+        return AlertDialog(
+          title: const Text('Vista previa del resultado'),
+          content: SizedBox(
+            width: 620,
+            child: DefaultTabController(
+              length: 3,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const TabBar(
+                    tabs: [
+                      Tab(text: 'Texto escaneado'),
+                      Tab(text: 'Citas detectadas'),
+                      Tab(text: 'Resultado final'),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  SizedBox(
+                    height: 270,
+                    child: TabBarView(
+                      children: [
+                        buildPane(sourceText),
+                        buildPane(citationsText),
+                        buildPane(finalText),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: Text(actionLabel),
+            ),
+          ],
+        );
+      },
+    );
+    return accepted == true;
   }
 
   Future<void> _copyAllReferences() async {
@@ -3647,6 +4012,21 @@ class _WizardHomePageState extends State<WizardHomePage> {
         biblicalTexts: payload.biblicalTexts,
         versionLabel: version.code,
       );
+      final scannedPreview = _textController.text.trim();
+      final outputPreview = buildScannedResultClipboardContent(
+        sourceText: scannedPreview,
+        groupedRefs: _groupedRefs,
+        includeBibleText: _includeBibleTextInOutput,
+        biblicalTexts: payload.biblicalTexts,
+        versionLabel: version.code,
+      );
+      final proceed = await _confirmOutputPreview(
+        sourceText: scannedPreview,
+        citationsText: clipboardContent,
+        finalText: outputPreview,
+        actionLabel: 'Copiar citas',
+      );
+      if (!proceed) return;
       await Clipboard.setData(ClipboardData(text: clipboardContent));
       if (!mounted) return;
       setState(() => _completedAction = _FinishAction.copiedCitations);
@@ -3688,6 +4068,19 @@ class _WizardHomePageState extends State<WizardHomePage> {
         biblicalTexts: payload.biblicalTexts,
         versionLabel: version.code,
       );
+      final citationsPreview = buildCitationsClipboardContent(
+        groupedRefs: _groupedRefs,
+        includeBibleText: _includeBibleTextInOutput,
+        biblicalTexts: payload.biblicalTexts,
+        versionLabel: version.code,
+      );
+      final proceed = await _confirmOutputPreview(
+        sourceText: text,
+        citationsText: citationsPreview,
+        finalText: clipboardContent,
+        actionLabel: 'Copiar resultado',
+      );
+      if (!proceed) return;
       await Clipboard.setData(ClipboardData(text: clipboardContent));
       if (!mounted) return;
       setState(() => _completedAction = _FinishAction.copiedScannedResult);
@@ -3700,7 +4093,10 @@ class _WizardHomePageState extends State<WizardHomePage> {
     }
   }
 
-  Future<void> _exportText() async {
+  Future<void> _exportText({
+    String? presetDirectoryPath,
+    String? presetFileName,
+  }) async {
     final text = _textController.text.trim();
     if (text.isEmpty) return;
 
@@ -3709,16 +4105,69 @@ class _WizardHomePageState extends State<WizardHomePage> {
         .toIso8601String()
         .replaceAll(':', '-')
         .substring(0, 19);
-    final defaultFileName = 'versecatch_$timestamp.txt';
+    final defaultFileName = presetFileName ?? 'versecatch_$timestamp.txt';
     final fileNameController = TextEditingController(text: defaultFileName);
     final directoryController = TextEditingController(
-      text: defaultDirectory.path,
+      text: presetDirectoryPath ?? defaultDirectory.path,
     );
+    String? validationError;
     final result = await showDialog<({String directoryPath, String fileName})>(
       context: context,
       builder: (dialogContext) {
         return StatefulBuilder(
           builder: (context, setState) {
+            Future<void> submit() async {
+              final rawFileName = fileNameController.text.trim();
+              final rawDirectory = directoryController.text.trim();
+              final invalidName = RegExp(r'[<>:"/\\|?*]').hasMatch(rawFileName);
+              if (rawFileName.isEmpty) {
+                setState(() {
+                  validationError = 'El nombre del archivo no puede estar vacío.';
+                });
+                return;
+              }
+              if (invalidName) {
+                setState(() {
+                  validationError =
+                      'El nombre contiene caracteres inválidos: < > : " / \\ | ? *';
+                });
+                return;
+              }
+              if (rawDirectory.isEmpty) {
+                setState(() {
+                  validationError = 'Selecciona una carpeta destino válida.';
+                });
+                return;
+              }
+
+              final candidateDir = Directory(rawDirectory);
+              try {
+                if (!await candidateDir.exists()) {
+                  await candidateDir.create(recursive: true);
+                }
+                final probe = File(
+                  p.join(
+                    candidateDir.path,
+                    '.versecatch_write_test_${DateTime.now().microsecondsSinceEpoch}',
+                  ),
+                );
+                await probe.writeAsString('ok');
+                await probe.delete();
+              } catch (_) {
+                setState(() {
+                  validationError =
+                      'La carpeta no es accesible para escritura. Elige otra ruta o usa Descargas.';
+                });
+                return;
+              }
+
+              if (!context.mounted) return;
+              Navigator.of(dialogContext).pop((
+                directoryPath: rawDirectory,
+                fileName: rawFileName,
+              ));
+            }
+
             return AlertDialog(
               title: const Text('Exportar texto'),
               content: SizedBox(
@@ -3754,11 +4203,24 @@ class _WizardHomePageState extends State<WizardHomePage> {
                         FilledButton.tonal(
                           onPressed: () => setState(() {
                             directoryController.text = defaultDirectory.path;
+                            validationError = null;
                           }),
-                          child: const Text('Usar ruta'),
+                          child: const Text('Usar Descargas'),
                         ),
                       ],
                     ),
+                    if (validationError != null) ...[
+                      const SizedBox(height: 8),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          validationError!,
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: Theme.of(context).colorScheme.error,
+                          ),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -3768,12 +4230,7 @@ class _WizardHomePageState extends State<WizardHomePage> {
                   child: const Text('Cancelar'),
                 ),
                 FilledButton(
-                  onPressed: () => Navigator.of(dialogContext).pop((
-                    directoryPath: directoryController.text.trim(),
-                    fileName: fileNameController.text.trim().isEmpty
-                        ? defaultFileName
-                        : fileNameController.text.trim(),
-                  )),
+                  onPressed: submit,
                   child: const Text('Exportar'),
                 ),
               ],
@@ -3826,6 +4283,27 @@ class _WizardHomePageState extends State<WizardHomePage> {
       if (buildResult.warning != null) {
         await _showOutputFailureDialog(buildResult.warning!);
       }
+
+      final version = _selectedBibleVersionOption();
+      final citationsPreview = buildCitationsClipboardContent(
+        groupedRefs: _groupedRefs,
+        includeBibleText: _includeBibleTextInOutput,
+        biblicalTexts: const {},
+        versionLabel: version.code,
+      );
+      final proceed = await _confirmOutputPreview(
+        sourceText: text,
+        citationsText: citationsPreview,
+        finalText: buildResult.content,
+        actionLabel: 'Exportar',
+      );
+      if (!proceed) {
+        if (Navigator.canPop(context)) {
+          Navigator.of(context).pop();
+        }
+        return;
+      }
+
       final fileName = result.fileName.trim().isEmpty
           ? defaultFileName
           : result.fileName.trim();
@@ -3835,6 +4313,14 @@ class _WizardHomePageState extends State<WizardHomePage> {
       final filePath = p.join(selectedDirectory.path, sanitizedFileName);
       await File(filePath).writeAsString(buildResult.content);
       await _store.setExportDirectoryPath(selectedDirectory.path);
+      await _store.pushExportHistory(
+        ExportHistoryItem(
+          timestamp: DateTime.now(),
+          format: 'txt',
+          filePath: filePath,
+        ),
+      );
+      await _refreshExportHistory();
       if (!mounted) return;
       if (Navigator.canPop(context)) {
         Navigator.of(context).pop();
@@ -4027,7 +4513,7 @@ class _WizardHomePageState extends State<WizardHomePage> {
     }
 
     final elapsed = DateTime.now().difference(startedAt);
-    final remaining = _minimumScanDuration - elapsed;
+    final remaining = _motionDuration(_minimumScanDuration) - elapsed;
     if (remaining > Duration.zero) {
       await Future<void>.delayed(remaining);
     }
@@ -4057,11 +4543,11 @@ class _WizardHomePageState extends State<WizardHomePage> {
       _ocrErrorMessage = null;
     });
 
-    await Future<void>.delayed(_scanCompletionHoldDuration);
+    await Future<void>.delayed(_motionDuration(_scanCompletionHoldDuration));
     if (!mounted) return;
 
     setState(() => _ocrVisualState = _OcrVisualState.exiting);
-    await Future<void>.delayed(_scanCompletionHoldDuration);
+    await Future<void>.delayed(_motionDuration(_scanCompletionHoldDuration));
     if (!mounted) return;
 
     setState(() {
@@ -4103,12 +4589,26 @@ class _WizardHomePageState extends State<WizardHomePage> {
     final bytes = await File(sourcePath).readAsBytes();
     final decoded = img.decodeImage(bytes);
     if (decoded == null) return (path: sourcePath, temporary: false);
-    const cf = 0.9;
-    final cw = (decoded.width * cf).round();
-    final ch = (decoded.height * cf).round();
-    final cx = ((decoded.width - cw) / 2).round();
-    final cy = ((decoded.height - ch) / 2).round();
-    final cropped = img.copyCrop(decoded, x: cx, y: cy, width: cw, height: ch);
+
+    var working = decoded;
+    if (_imageQuarterTurns != 0) {
+      working = img.copyRotate(
+        working,
+        angle: (_imageQuarterTurns * 90).toDouble(),
+      );
+    }
+
+    final left = _imageCropRect.left.clamp(0.0, 1.0);
+    final top = _imageCropRect.top.clamp(0.0, 1.0);
+    final width = _imageCropRect.width.clamp(0.1, 1.0);
+    final height = _imageCropRect.height.clamp(0.1, 1.0);
+
+    final x = (working.width * left).round().clamp(0, working.width - 1);
+    final y = (working.height * top).round().clamp(0, working.height - 1);
+    final w = (working.width * width).round().clamp(1, working.width - x);
+    final h = (working.height * height).round().clamp(1, working.height - y);
+    final cropped = img.copyCrop(working, x: x, y: y, width: w, height: h);
+
     final gray = img.grayscale(cropped);
     final resized = gray.width < 1200
         ? img.copyResize(gray, width: 1200)
@@ -4197,14 +4697,19 @@ class _WizardHomePageState extends State<WizardHomePage> {
         source: _source ?? _WizardSource.text,
         textController: _textController,
         imagePath: _imagePath,
+        imageQuarterTurns: _imageQuarterTurns,
+        cropRect: _imageCropRect,
         processing: _processing,
         ocrVisualState: _ocrVisualState,
         ocrFinished: _ocrFinished,
         ocrErrorMessage: _ocrErrorMessage,
+        reduceMotionEnabled: _reduceMotionEnabled,
         history: _history,
         onPickFile: _pickTextFile,
         onPickImage: _pickImage,
         onContinueImage: _processSelectedImage,
+        onRotateImage: _rotateSelectedImage,
+        onCropImage: _openCropDialog,
         onOpenCamera: _openCamera,
         onContinueText: _advanceToReview,
         onHistorySelect: (r) {
@@ -4216,6 +4721,7 @@ class _WizardHomePageState extends State<WizardHomePage> {
         textController: _textController,
         detectingReferences: _isDetectingReferences,
         detectionVisualState: _reviewDetectionVisualState,
+        reduceMotionEnabled: _reduceMotionEnabled,
         onBack: () => setState(() => _step = _WizardStep.acquireContent),
         onContinue: _runDetection,
       ),
@@ -4236,8 +4742,11 @@ class _WizardHomePageState extends State<WizardHomePage> {
         selectedBibleVersionId: _selectedBibleVersionId,
         copiedFeedbackVisible: _copiedFeedbackVisible,
         isDesktop: isDesktop,
+        compactView: _showCompactRefsView,
+        reduceMotionEnabled: _reduceMotionEnabled,
         onRefSelected: _selectRef,
         onNavigate: _navigateRef,
+        onToggleCompactView: _toggleExploreViewMode,
         onBibleVersionChanged: _onBibleVersionChanged,
         onCopyBibleText: _copyBibleText,
         onBack: () => setState(() => _step = _WizardStep.detectRefs),
@@ -4251,12 +4760,18 @@ class _WizardHomePageState extends State<WizardHomePage> {
         savedToHistory: _savedToHistory,
         completedAction: _completedAction,
         includeBibleTextInOutput: _includeBibleTextInOutput,
+        reduceMotionEnabled: _reduceMotionEnabled,
+        recentExports: _recentExports,
         exportDirectoryPath: _exportDirectoryPath,
         onSaveToHistory: _saveToHistory,
         onCopyReferences: _copyAllReferences,
         onShareResult: _shareResult,
         onExportText: _exportText,
         onToggleIncludeBibleText: _toggleIncludeBibleText,
+        onToggleReduceMotion: _toggleReduceMotion,
+        onRetryExport: (item) {
+          _retryExportFromHistory(item);
+        },
         onNewScan: _resetWizard,
       ),
     };
@@ -4726,14 +5241,19 @@ class _AcquireContentStep extends StatelessWidget {
     required this.source,
     required this.textController,
     required this.imagePath,
+    required this.imageQuarterTurns,
+    required this.cropRect,
     required this.processing,
     required this.ocrVisualState,
     required this.ocrFinished,
     required this.ocrErrorMessage,
+    required this.reduceMotionEnabled,
     required this.history,
     required this.onPickFile,
     required this.onPickImage,
     required this.onContinueImage,
+    required this.onRotateImage,
+    required this.onCropImage,
     required this.onOpenCamera,
     required this.onContinueText,
     required this.onHistorySelect,
@@ -4741,14 +5261,19 @@ class _AcquireContentStep extends StatelessWidget {
   final _WizardSource source;
   final TextEditingController textController;
   final String? imagePath;
+  final int imageQuarterTurns;
+  final Rect cropRect;
   final bool processing;
   final _OcrVisualState ocrVisualState;
   final bool ocrFinished;
   final String? ocrErrorMessage;
+  final bool reduceMotionEnabled;
   final List<CaptureRecord> history;
   final VoidCallback onPickFile;
   final VoidCallback onPickImage;
   final VoidCallback onContinueImage;
+  final VoidCallback onRotateImage;
+  final VoidCallback onCropImage;
   final VoidCallback onOpenCamera;
   final VoidCallback onContinueText;
   final ValueChanged<CaptureRecord> onHistorySelect;
@@ -4767,22 +5292,32 @@ class _AcquireContentStep extends StatelessWidget {
       _WizardSource.image => _ImagePickerContent(
         source: source,
         imagePath: imagePath,
+        imageQuarterTurns: imageQuarterTurns,
+        cropRect: cropRect,
         processing: processing,
         ocrVisualState: ocrVisualState,
         ocrFinished: ocrFinished,
         ocrErrorMessage: ocrErrorMessage,
+        reduceMotionEnabled: reduceMotionEnabled,
         onPickImage: onPickImage,
         onContinue: onContinueImage,
+        onRotate: onRotateImage,
+        onCrop: onCropImage,
       ),
       _WizardSource.camera => _ImagePickerContent(
         source: source,
         imagePath: imagePath,
+        imageQuarterTurns: imageQuarterTurns,
+        cropRect: cropRect,
         processing: processing,
         ocrVisualState: ocrVisualState,
         ocrFinished: ocrFinished,
         ocrErrorMessage: ocrErrorMessage,
+        reduceMotionEnabled: reduceMotionEnabled,
         onPickImage: onOpenCamera,
         onContinue: onContinueImage,
+        onRotate: onRotateImage,
+        onCrop: onCropImage,
       ),
       _WizardSource.history => _HistoryListContent(
         history: history,
@@ -4905,21 +5440,31 @@ class _ImagePickerContent extends StatelessWidget {
   const _ImagePickerContent({
     required this.source,
     required this.imagePath,
+    required this.imageQuarterTurns,
+    required this.cropRect,
     required this.processing,
     required this.ocrVisualState,
     required this.ocrFinished,
     required this.ocrErrorMessage,
+    required this.reduceMotionEnabled,
     required this.onPickImage,
     required this.onContinue,
+    required this.onRotate,
+    required this.onCrop,
   });
   final _WizardSource source;
   final String? imagePath;
+  final int imageQuarterTurns;
+  final Rect cropRect;
   final bool processing;
   final _OcrVisualState ocrVisualState;
   final bool ocrFinished;
   final String? ocrErrorMessage;
+  final bool reduceMotionEnabled;
   final VoidCallback onPickImage;
   final VoidCallback onContinue;
+  final VoidCallback onRotate;
+  final VoidCallback onCrop;
 
   @override
   Widget build(BuildContext context) {
@@ -4973,11 +5518,14 @@ class _ImagePickerContent extends StatelessWidget {
               ),
               child: _ImageViewportOverlay(
                 imagePath: imagePath!,
+                imageQuarterTurns: imageQuarterTurns,
+                cropRect: cropRect,
                 showOverlay: showOverlay,
                 exiting: ocrVisualState == _OcrVisualState.exiting,
                 processing: processing,
                 overlayState: mapOverlayState(),
                 ocrErrorMessage: ocrErrorMessage,
+                reduceMotionEnabled: reduceMotionEnabled,
               ),
             )
           else
@@ -5030,6 +5578,25 @@ class _ImagePickerContent extends StatelessWidget {
                 : Icon(pickButtonIcon),
             label: Text(processing ? 'Analizando…' : pickButtonLabel),
           ),
+          if (hasImage && !processing) ...[
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                OutlinedButton.icon(
+                  onPressed: onRotate,
+                  icon: const Icon(Icons.rotate_right_outlined, size: 18),
+                  label: const Text('Rotar'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: onCrop,
+                  icon: const Icon(Icons.crop_outlined, size: 18),
+                  label: const Text('Recortar'),
+                ),
+              ],
+            ),
+          ],
           if (processing && hasImage) ...[
             const SizedBox(height: 12),
             Text(
@@ -5068,19 +5635,25 @@ class _ImagePickerContent extends StatelessWidget {
 class _ImageViewportOverlay extends StatefulWidget {
   const _ImageViewportOverlay({
     required this.imagePath,
+    required this.imageQuarterTurns,
+    required this.cropRect,
     required this.showOverlay,
     required this.exiting,
     required this.processing,
     required this.overlayState,
     required this.ocrErrorMessage,
+    required this.reduceMotionEnabled,
   });
 
   final String imagePath;
+  final int imageQuarterTurns;
+  final Rect cropRect;
   final bool showOverlay;
   final bool exiting;
   final bool processing;
   final OcrOverlayState overlayState;
   final String? ocrErrorMessage;
+  final bool reduceMotionEnabled;
 
   @override
   State<_ImageViewportOverlay> createState() => _ImageViewportOverlayState();
@@ -5134,17 +5707,23 @@ class _ImageViewportOverlayState extends State<_ImageViewportOverlay> {
                 minScale: 1,
                 maxScale: 5,
                 child: Center(
-                  child: Image.file(
-                    File(widget.imagePath),
-                    width: double.infinity,
-                    height: double.infinity,
-                    fit: BoxFit.contain,
+                  child: RotatedBox(
+                    quarterTurns: widget.imageQuarterTurns,
+                    child: Image.file(
+                      File(widget.imagePath),
+                      width: double.infinity,
+                      height: double.infinity,
+                      fit: BoxFit.contain,
+                    ),
                   ),
                 ),
               ),
+              _CropOverlayMask(cropRect: widget.cropRect),
               if (widget.showOverlay)
                 AnimatedOpacity(
-                  duration: const Duration(milliseconds: 400),
+                  duration: widget.reduceMotionEnabled
+                      ? Duration.zero
+                      : const Duration(milliseconds: 400),
                   opacity: widget.exiting ? 0 : 1,
                   child: OcrScanOverlay(
                     active: widget.processing,
@@ -5184,13 +5763,19 @@ class _ImageViewportOverlayState extends State<_ImageViewportOverlay> {
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
-                    Image.file(
-                      File(widget.imagePath),
-                      fit: BoxFit.fill,
+                    RotatedBox(
+                      quarterTurns: widget.imageQuarterTurns,
+                      child: Image.file(
+                        File(widget.imagePath),
+                        fit: BoxFit.fill,
+                      ),
                     ),
+                    _CropOverlayMask(cropRect: widget.cropRect),
                     if (widget.showOverlay)
                       AnimatedOpacity(
-                        duration: const Duration(milliseconds: 400),
+                        duration: widget.reduceMotionEnabled
+                            ? Duration.zero
+                            : const Duration(milliseconds: 400),
                         opacity: widget.exiting ? 0 : 1,
                         child: OcrScanOverlay(
                           active: widget.processing,
@@ -5206,6 +5791,80 @@ class _ImageViewportOverlayState extends State<_ImageViewportOverlay> {
           ),
         );
       },
+    );
+  }
+}
+
+class _CropOverlayMask extends StatelessWidget {
+  const _CropOverlayMask({required this.cropRect});
+
+  final Rect cropRect;
+
+  @override
+  Widget build(BuildContext context) {
+    final safe = Rect.fromLTWH(
+      cropRect.left.clamp(0.0, 1.0),
+      cropRect.top.clamp(0.0, 1.0),
+      cropRect.width.clamp(0.1, 1.0),
+      cropRect.height.clamp(0.1, 1.0),
+    );
+
+    return IgnorePointer(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final width = constraints.maxWidth;
+          final height = constraints.maxHeight;
+          final left = width * safe.left;
+          final top = height * safe.top;
+          final rectW = width * safe.width;
+          final rectH = height * safe.height;
+
+          return Stack(
+            children: [
+              Positioned.fill(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.16),
+                  ),
+                ),
+              ),
+              Positioned(
+                left: left,
+                top: top,
+                width: rectW,
+                height: rectH,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.transparent,
+                    border: Border.all(
+                      color: Theme.of(context).colorScheme.primary,
+                      width: 2,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _CropSelectionPreview extends StatelessWidget {
+  const _CropSelectionPreview({required this.imagePath, required this.cropRect});
+
+  final String imagePath;
+  final Rect cropRect;
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        Image.file(File(imagePath), fit: BoxFit.cover),
+        _CropOverlayMask(cropRect: cropRect),
+      ],
     );
   }
 }
@@ -5313,12 +5972,14 @@ class _ReviewTextStep extends StatefulWidget {
     required this.textController,
     required this.detectingReferences,
     required this.detectionVisualState,
+    required this.reduceMotionEnabled,
     required this.onBack,
     required this.onContinue,
   });
   final TextEditingController textController;
   final bool detectingReferences;
   final _OcrVisualState detectionVisualState;
+  final bool reduceMotionEnabled;
   final VoidCallback onBack;
   final Future<void> Function() onContinue;
 
@@ -5328,7 +5989,10 @@ class _ReviewTextStep extends StatefulWidget {
 
 class _ReviewTextStepState extends State<_ReviewTextStep> {
   bool _showPreview = true;
+  bool _showEditingHelp = false;
   List<VerseMatch> _previewMatches = const [];
+  int _activePreviewMatchIndex = 0;
+  final ScrollController _previewScrollController = ScrollController();
 
   @override
   void initState() {
@@ -5341,7 +6005,14 @@ class _ReviewTextStepState extends State<_ReviewTextStep> {
     setState(() {
       _previewMatches = extractVerseMatches(text);
       _showPreview = true;
+      _activePreviewMatchIndex = 0;
     });
+  }
+
+  @override
+  void dispose() {
+    _previewScrollController.dispose();
+    super.dispose();
   }
 
   void _toggleMode() {
@@ -5352,26 +6023,64 @@ class _ReviewTextStepState extends State<_ReviewTextStep> {
     _refreshPreview();
   }
 
-  TextSpan _buildHighlightedPreview(String text) {
+  void _navigatePreviewMatch(int delta) {
+    if (_previewMatches.isEmpty) return;
+    final next = (_activePreviewMatchIndex + delta).clamp(
+      0,
+      _previewMatches.length - 1,
+    );
+    if (next == _activePreviewMatchIndex) return;
+    setState(() => _activePreviewMatchIndex = next);
+
+    if (!_previewScrollController.hasClients) return;
+    final text = widget.textController.text;
+    if (text.isEmpty) return;
+    final match = _previewMatches[next];
+    final ratio = (match.start / text.length).clamp(0.0, 1.0);
+    final target = _previewScrollController.position.maxScrollExtent * ratio;
+    if (widget.reduceMotionEnabled) {
+      _previewScrollController.jumpTo(target);
+      return;
+    }
+    _previewScrollController.animateTo(
+      target,
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOut,
+    );
+  }
+
+  TextSpan _buildHighlightedPreview(String text, ThemeData theme) {
     final spans = <InlineSpan>[];
     final sorted = [..._previewMatches]
       ..sort((a, b) => a.start.compareTo(b.start));
     var pos = 0;
+    final activeIndex = _activePreviewMatchIndex.clamp(
+      0,
+      sorted.isEmpty ? 0 : sorted.length - 1,
+    );
 
-    for (final match in sorted) {
+    for (var index = 0; index < sorted.length; index++) {
+      final match = sorted[index];
       final start = match.start.clamp(0, text.length);
       final end = match.end.clamp(0, text.length);
       if (start >= end) continue;
       if (start > pos) {
         spans.add(TextSpan(text: text.substring(pos, start)));
       }
+
+      final isActive = index == activeIndex;
+      final activeTextColor = theme.colorScheme.onPrimaryContainer;
+      final activeBackground = theme.colorScheme.primaryContainer;
+      final defaultTextColor = const Color(0xFFAD1457);
+      final defaultBackground = const Color(0xFFF8BBD0);
+
       spans.add(
         TextSpan(
           text: text.substring(start, end),
-          style: const TextStyle(
-            color: Color(0xFFAD1457),
+          style: TextStyle(
+            color: isActive ? activeTextColor : defaultTextColor,
             fontWeight: FontWeight.bold,
-            backgroundColor: Color(0xFFF8BBD0),
+            backgroundColor: isActive ? activeBackground : defaultBackground,
           ),
         ),
       );
@@ -5389,6 +6098,7 @@ class _ReviewTextStepState extends State<_ReviewTextStep> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final keyboardVisible = View.of(context).viewInsets.bottom > 0;
+    final compactMode = keyboardVisible;
     final isBusy = widget.detectingReferences;
     final charCount = widget.textController.text.length;
     final previewText = widget.textController.text;
@@ -5433,22 +6143,36 @@ class _ReviewTextStepState extends State<_ReviewTextStep> {
                     ],
                   ),
                 ),
-                OutlinedButton.icon(
-                  key: const ValueKey('review-mode-toggle'),
-                  onPressed: (previewText.trim().isEmpty || isBusy)
-                      ? null
-                      : _toggleMode,
-                  icon: Icon(
-                    _showPreview
-                        ? Icons.edit_outlined
-                        : Icons.visibility_outlined,
-                    size: 18,
-                  ),
-                  label: Text(_showPreview ? 'Editar' : 'Vista previa'),
-                ),
+                compactMode
+                    ? IconButton.outlined(
+                        key: const ValueKey('review-mode-toggle'),
+                        onPressed: (previewText.trim().isEmpty || isBusy)
+                            ? null
+                            : _toggleMode,
+                        icon: Icon(
+                          _showPreview
+                              ? Icons.edit_outlined
+                              : Icons.visibility_outlined,
+                          size: 18,
+                        ),
+                        tooltip: _showPreview ? 'Editar' : 'Vista previa',
+                      )
+                    : OutlinedButton.icon(
+                        key: const ValueKey('review-mode-toggle'),
+                        onPressed: (previewText.trim().isEmpty || isBusy)
+                            ? null
+                            : _toggleMode,
+                        icon: Icon(
+                          _showPreview
+                              ? Icons.edit_outlined
+                              : Icons.visibility_outlined,
+                          size: 18,
+                        ),
+                        label: Text(_showPreview ? 'Editar' : 'Vista previa'),
+                      ),
               ],
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: kWizardPanelSpacing),
             Expanded(
               child: LayoutBuilder(
                 builder: (context, constraints) {
@@ -5471,10 +6195,42 @@ class _ReviewTextStepState extends State<_ReviewTextStep> {
                                 ),
                               ),
                               const SizedBox(height: 8),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      _previewMatches.isEmpty
+                                          ? 'Sin citas detectadas'
+                                          : 'Cita ${_activePreviewMatchIndex + 1} de ${_previewMatches.length}',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: theme.textTheme.bodySmall?.copyWith(
+                                        color: theme.colorScheme.onSurfaceVariant,
+                                      ),
+                                    ),
+                                  ),
+                                  IconButton(
+                                    tooltip: 'Cita anterior',
+                                    onPressed: _previewMatches.isEmpty
+                                        ? null
+                                        : () => _navigatePreviewMatch(-1),
+                                    icon: const Icon(Icons.keyboard_arrow_up),
+                                  ),
+                                  IconButton(
+                                    tooltip: 'Siguiente cita',
+                                    onPressed: _previewMatches.isEmpty
+                                        ? null
+                                        : () => _navigatePreviewMatch(1),
+                                    icon: const Icon(Icons.keyboard_arrow_down),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
                               Expanded(
                                 child: SingleChildScrollView(
+                                  controller: _previewScrollController,
                                   child: SelectableText.rich(
-                                    _buildHighlightedPreview(previewText),
+                                    _buildHighlightedPreview(previewText, theme),
                                     style: theme.textTheme.bodyMedium?.copyWith(
                                       height: 1.5,
                                     ),
@@ -5485,17 +6241,46 @@ class _ReviewTextStepState extends State<_ReviewTextStep> {
                           ),
                         )
                       : const SizedBox.shrink();
-                  final editorField = TextField(
-                    key: const ValueKey('review-text-field'),
-                    controller: widget.textController,
-                    expands: true,
-                    maxLines: null,
-                    minLines: null,
-                    textAlignVertical: TextAlignVertical.top,
-                    decoration: const InputDecoration(
-                      border: OutlineInputBorder(),
-                      alignLabelWithHint: true,
-                    ),
+                  final editorField = Column(
+                    children: [
+                      if (!compactMode) ...[
+                        ExpansionTile(
+                          initiallyExpanded: _showEditingHelp,
+                          onExpansionChanged: (expanded) {
+                            setState(() => _showEditingHelp = expanded);
+                          },
+                          title: const Text('Ayuda de formato de citas'),
+                          subtitle: const Text('Ejemplos válidos para detección'),
+                          childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                          children: const [
+                            Align(
+                              alignment: Alignment.centerLeft,
+                              child: Text('Ejemplos: Juan 3:16, Salmos 23:1-4, 1 Corintios 13:4'),
+                            ),
+                            SizedBox(height: 6),
+                            Align(
+                              alignment: Alignment.centerLeft,
+                              child: Text('También: Mateo 5:3, 5:4, 5:9'),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                      ],
+                      Expanded(
+                        child: TextField(
+                          key: const ValueKey('review-text-field'),
+                          controller: widget.textController,
+                          expands: true,
+                          maxLines: null,
+                          minLines: null,
+                          textAlignVertical: TextAlignVertical.top,
+                          decoration: const InputDecoration(
+                            border: OutlineInputBorder(),
+                            alignLabelWithHint: true,
+                          ),
+                        ),
+                      ),
+                    ],
                   );
 
                   return SizedBox.expand(
@@ -5505,7 +6290,9 @@ class _ReviewTextStepState extends State<_ReviewTextStep> {
                         _showPreview ? previewPanel : editorField,
                         if (widget.detectionVisualState != _OcrVisualState.idle)
                           AnimatedOpacity(
-                            duration: const Duration(milliseconds: 280),
+                            duration: widget.reduceMotionEnabled
+                                ? Duration.zero
+                                : const Duration(milliseconds: 280),
                             opacity:
                                 widget.detectionVisualState ==
                                     _OcrVisualState.exiting
@@ -5524,55 +6311,80 @@ class _ReviewTextStepState extends State<_ReviewTextStep> {
               ),
             ),
             const SizedBox(height: 10),
-            Row(
-              children: [
-                Expanded(
-                  key: const ValueKey('review-summary'),
-                  child: keyboardVisible
-                      ? Text(
-                          '$charCount car. · '
-                          '${_showPreview ? _previewMatches.length : 0} citas',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+            if (keyboardVisible)
+              Row(
+                children: [
+                  Expanded(
+                    key: const ValueKey('review-summary'),
+                    child: Text(
+                      '$charCount car. · '
+                      '${_showPreview ? _previewMatches.length : 0} citas',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                  OutlinedButton(
+                    style: OutlinedButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    onPressed: isBusy ? null : widget.onBack,
+                    child: const Text('Atrás'),
+                  ),
+                  const SizedBox(width: 6),
+                  FilledButton(
+                    style: FilledButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    onPressed: charCount > 0 && !isBusy
+                        ? () => widget.onContinue()
+                        : null,
+                    child: const Text('Continuar'),
+                  ),
+                ],
+              )
+            else
+              Row(
+                children: [
+                  Expanded(
+                    key: const ValueKey('review-summary'),
+                    child: Wrap(
+                      spacing: 12,
+                      runSpacing: 8,
+                      children: [
+                        Text(
+                          '$charCount caracteres',
                           style: theme.textTheme.bodySmall?.copyWith(
                             color: theme.colorScheme.onSurfaceVariant,
                           ),
-                        )
-                      : Wrap(
-                          spacing: 12,
-                          runSpacing: 8,
-                          children: [
-                            Text(
-                              '$charCount caracteres',
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: theme.colorScheme.onSurfaceVariant,
-                              ),
-                            ),
-                            Text(
-                              previewText.trim().isEmpty || !_showPreview
-                                  ? '0 citas resaltadas'
-                                  : previewLabel,
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: theme.colorScheme.onSurfaceVariant,
-                              ),
-                            ),
-                          ],
                         ),
-                ),
-                OutlinedButton(
-                  onPressed: isBusy ? null : widget.onBack,
-                  child: const Text('Atrás'),
-                ),
-                const SizedBox(width: 8),
-                FilledButton.icon(
-                  onPressed: charCount > 0 && !isBusy
-                      ? () => widget.onContinue()
-                      : null,
-                  icon: const Icon(Icons.arrow_forward, size: 18),
-                  label: const Text('Continuar'),
-                ),
-              ],
-            ),
+                        Text(
+                          previewText.trim().isEmpty || !_showPreview
+                              ? '0 citas resaltadas'
+                              : previewLabel,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  OutlinedButton(
+                    onPressed: isBusy ? null : widget.onBack,
+                    child: const Text('Atrás'),
+                  ),
+                  const SizedBox(width: 8),
+                  FilledButton.icon(
+                    onPressed: charCount > 0 && !isBusy
+                        ? () => widget.onContinue()
+                        : null,
+                    icon: const Icon(Icons.arrow_forward, size: 18),
+                    label: const Text('Continuar'),
+                  ),
+                ],
+              ),
           ],
         ),
       ),
@@ -5826,8 +6638,11 @@ class _ExploreRefsStep extends StatelessWidget {
     required this.selectedBibleVersionId,
     required this.copiedFeedbackVisible,
     required this.isDesktop,
+    required this.compactView,
+    required this.reduceMotionEnabled,
     required this.onRefSelected,
     required this.onNavigate,
+    required this.onToggleCompactView,
     required this.onBibleVersionChanged,
     required this.onCopyBibleText,
     required this.onBack,
@@ -5843,8 +6658,11 @@ class _ExploreRefsStep extends StatelessWidget {
   final int selectedBibleVersionId;
   final bool copiedFeedbackVisible;
   final bool isDesktop;
+  final bool compactView;
+  final bool reduceMotionEnabled;
   final void Function(String, int) onRefSelected;
   final ValueChanged<int> onNavigate;
+  final ValueChanged<bool> onToggleCompactView;
   final ValueChanged<int?> onBibleVersionChanged;
   final VoidCallback onCopyBibleText;
   final VoidCallback onBack;
@@ -5915,6 +6733,33 @@ class _ExploreRefsStep extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 12),
+          Row(
+            children: [
+              const Text('Vista'),
+              const SizedBox(width: 8),
+              SegmentedButton<bool>(
+                showSelectedIcon: false,
+                segments: const [
+                  ButtonSegment<bool>(
+                    value: false,
+                    label: Text('Una cita'),
+                    icon: Icon(Icons.view_carousel_outlined),
+                  ),
+                  ButtonSegment<bool>(
+                    value: true,
+                    label: Text('Compacta'),
+                    icon: Icon(Icons.view_list_outlined),
+                  ),
+                ],
+                selected: <bool>{compactView},
+                onSelectionChanged: (selection) {
+                  if (selection.isEmpty) return;
+                  onToggleCompactView(selection.first);
+                },
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
           // Content area
           Expanded(
             child: isDesktop
@@ -5925,10 +6770,33 @@ class _ExploreRefsStep extends StatelessWidget {
                         child: _RefListPanel(
                           refs: groupedRefs,
                           currentIndex: currentRefIndex,
+                          showPositionPrefix: false,
                           onSelect: onRefSelected,
                         ),
                       ),
                       const VerticalDivider(width: 16),
+                      Expanded(
+                        child: _VersePanel(
+                          bibleText: bibleText,
+                          bibleMessage: bibleMessage,
+                          loading: loadingBibleText,
+                        ),
+                      ),
+                    ],
+                  )
+                : compactView
+                ? Column(
+                    children: [
+                      SizedBox(
+                        height: 150,
+                        child: _RefListPanel(
+                          refs: groupedRefs,
+                          currentIndex: currentRefIndex,
+                          showPositionPrefix: true,
+                          onSelect: onRefSelected,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
                       Expanded(
                         child: _VersePanel(
                           bibleText: bibleText,
@@ -5953,6 +6821,7 @@ class _ExploreRefsStep extends StatelessWidget {
                         child: _RefChipsPanel(
                           refs: groupedRefs,
                           currentIndex: currentRefIndex,
+                          reduceMotionEnabled: reduceMotionEnabled,
                           onSelect: onRefSelected,
                         ),
                       ),
@@ -6003,10 +6872,12 @@ class _RefListPanel extends StatelessWidget {
   const _RefListPanel({
     required this.refs,
     required this.currentIndex,
+    required this.showPositionPrefix,
     required this.onSelect,
   });
   final List<({String reference, int count})> refs;
   final int currentIndex;
+  final bool showPositionPrefix;
   final void Function(String, int) onSelect;
 
   @override
@@ -6024,7 +6895,12 @@ class _RefListPanel extends StatelessWidget {
           selectedTileColor: theme.colorScheme.primaryContainer.withValues(
             alpha: 0.3,
           ),
-          title: Text(ref.reference, style: theme.textTheme.bodySmall),
+          title: Text(
+            showPositionPrefix
+                ? '(${i + 1} de ${refs.length}) ${ref.reference}'
+                : ref.reference,
+            style: theme.textTheme.bodySmall,
+          ),
           onTap: () => onSelect(ref.reference, i),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         );
@@ -6033,30 +6909,145 @@ class _RefListPanel extends StatelessWidget {
   }
 }
 
-class _RefChipsPanel extends StatelessWidget {
+class _RefChipsPanel extends StatefulWidget {
   const _RefChipsPanel({
     required this.refs,
     required this.currentIndex,
+    required this.reduceMotionEnabled,
     required this.onSelect,
   });
   final List<({String reference, int count})> refs;
   final int currentIndex;
+  final bool reduceMotionEnabled;
   final void Function(String, int) onSelect;
 
   @override
+  State<_RefChipsPanel> createState() => _RefChipsPanelState();
+}
+
+class _RefChipsPanelState extends State<_RefChipsPanel> {
+  late final ScrollController _scrollController;
+  final List<GlobalKey> _chipKeys = <GlobalKey>[];
+
+  void _syncChipKeys() {
+    final missing = widget.refs.length - _chipKeys.length;
+    if (missing > 0) {
+      for (var i = 0; i < missing; i++) {
+        _chipKeys.add(GlobalKey());
+      }
+    } else if (missing < 0) {
+      _chipKeys.removeRange(widget.refs.length, _chipKeys.length);
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _syncChipKeys();
+    _scrollController = ScrollController();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToActiveChip());
+  }
+
+  @override
+  void didUpdateWidget(covariant _RefChipsPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _syncChipKeys();
+    if (oldWidget.currentIndex != widget.currentIndex ||
+        oldWidget.refs.length != widget.refs.length) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToActiveChip());
+    }
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _scrollToActiveChip() {
+    if (!_scrollController.hasClients || widget.refs.isEmpty) return;
+    final index = widget.currentIndex.clamp(0, widget.refs.length - 1);
+    final chipContext = _chipKeys[index].currentContext;
+    if (chipContext == null) return;
+    final scrollContext = _scrollController.position.context.notificationContext;
+    if (scrollContext == null) return;
+
+    final chipBox = chipContext.findRenderObject() as RenderBox?;
+    final viewportBox = scrollContext.findRenderObject() as RenderBox?;
+    if (chipBox == null || viewportBox == null) return;
+
+    final chipOffset = chipBox.localToGlobal(Offset.zero, ancestor: viewportBox).dx;
+    final chipWidth = chipBox.size.width;
+    const edgePadding = 8.0;
+    final viewportWidth = viewportBox.size.width;
+
+    final currentOffset = _scrollController.offset;
+    final minVisibleX = edgePadding;
+    final maxVisibleX = viewportWidth - edgePadding;
+
+    double targetOffset = currentOffset;
+    if (chipOffset < minVisibleX) {
+      targetOffset = currentOffset - (minVisibleX - chipOffset);
+    } else if (chipOffset + chipWidth > maxVisibleX) {
+      targetOffset = currentOffset + ((chipOffset + chipWidth) - maxVisibleX);
+    }
+
+    final clamped = targetOffset.clamp(
+      _scrollController.position.minScrollExtent,
+      _scrollController.position.maxScrollExtent,
+    );
+
+    if ((clamped - currentOffset).abs() < 0.5) return;
+    if (widget.reduceMotionEnabled) {
+      _scrollController.jumpTo(clamped.toDouble());
+      return;
+    }
+    _scrollController.animateTo(
+      clamped.toDouble(),
+      duration: const Duration(milliseconds: 240),
+      curve: Curves.easeOut,
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return ListView.separated(
+      controller: _scrollController,
       scrollDirection: Axis.horizontal,
       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-      itemCount: refs.length,
+      itemCount: widget.refs.length,
       separatorBuilder: (_, _) => const SizedBox(width: 8),
       itemBuilder: (context, i) {
-        final ref = refs[i];
-        final isActive = i == currentIndex;
-        return FilterChip(
-          selected: isActive,
-          label: Text(ref.reference),
-          onSelected: (_) => onSelect(ref.reference, i),
+        final ref = widget.refs[i];
+        final isActive = i == widget.currentIndex;
+        return KeyedSubtree(
+          key: _chipKeys[i],
+          child: FilterChip(
+            selected: isActive,
+            showCheckmark: false,
+            visualDensity: VisualDensity.compact,
+            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            label: Text(ref.reference),
+            selectedColor: theme.colorScheme.primaryContainer,
+            checkmarkColor: theme.colorScheme.onPrimaryContainer,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            side: BorderSide(
+              color: isActive
+                  ? theme.colorScheme.primary
+                  : theme.colorScheme.outline,
+              width: isActive ? 1.6 : 1,
+            ),
+            labelStyle: theme.textTheme.labelLarge?.copyWith(
+              color: isActive
+                  ? theme.colorScheme.onPrimaryContainer
+                  : theme.colorScheme.onSurface,
+              fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
+            ),
+            onSelected: (_) => widget.onSelect(ref.reference, i),
+          ),
         );
       },
     );
@@ -6120,24 +7111,32 @@ class _FinishStep extends StatelessWidget {
     required this.savedToHistory,
     required this.completedAction,
     required this.includeBibleTextInOutput,
+    required this.reduceMotionEnabled,
+    required this.recentExports,
     required this.exportDirectoryPath,
     required this.onSaveToHistory,
     required this.onCopyReferences,
     required this.onShareResult,
     required this.onExportText,
     required this.onToggleIncludeBibleText,
+    required this.onToggleReduceMotion,
+    required this.onRetryExport,
     required this.onNewScan,
   });
   final int refCount;
   final bool savedToHistory;
   final _FinishAction completedAction;
   final bool includeBibleTextInOutput;
+  final bool reduceMotionEnabled;
+  final List<ExportHistoryItem> recentExports;
   final String? exportDirectoryPath;
   final VoidCallback onSaveToHistory;
   final VoidCallback onCopyReferences;
   final VoidCallback onShareResult;
   final VoidCallback onExportText;
   final ValueChanged<bool> onToggleIncludeBibleText;
+  final ValueChanged<bool> onToggleReduceMotion;
+  final ValueChanged<ExportHistoryItem> onRetryExport;
   final VoidCallback onNewScan;
 
   @override
@@ -6178,6 +7177,15 @@ class _FinishStep extends StatelessWidget {
             title: const Text('Incluir texto bíblico en resultados'),
             subtitle: const Text(
               'Se añadirá el texto bíblico de cada cita cuando sea posible.',
+            ),
+          ),
+          SwitchListTile.adaptive(
+            contentPadding: EdgeInsets.zero,
+            value: reduceMotionEnabled,
+            onChanged: onToggleReduceMotion,
+            title: const Text('Reducir animaciones'),
+            subtitle: const Text(
+              'Desactiva transiciones no críticas para mejorar accesibilidad visual.',
             ),
           ),
           if (exportDirectoryPath != null &&
@@ -6238,6 +7246,42 @@ class _FinishStep extends StatelessWidget {
                   ? Icon(Icons.check_circle, color: Colors.green.shade600)
                   : null,
             ),
+          ],
+          if (recentExports.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'Últimas exportaciones',
+                style: theme.textTheme.titleSmall,
+              ),
+            ),
+            const SizedBox(height: 8),
+            for (final item in recentExports) ...[
+              Card(
+                margin: EdgeInsets.zero,
+                child: ListTile(
+                  dense: true,
+                  leading: const Icon(Icons.history_outlined),
+                  title: Text(
+                    p.basename(item.filePath),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  subtitle: Text(
+                    '${_formatTimestamp(item.timestamp)} · ${item.format.toUpperCase()}\n${item.filePath}',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  trailing: IconButton(
+                    tooltip: 'Reintentar exportación',
+                    icon: const Icon(Icons.replay_outlined),
+                    onPressed: () => onRetryExport(item),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+            ],
           ],
           const SizedBox(height: 24),
           SizedBox(

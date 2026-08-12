@@ -9,7 +9,7 @@ class OcrScanOverlay extends StatefulWidget {
     super.key,
     required this.active,
     this.duration = const Duration(seconds: 6),
-    this.tint = const Color(0xFF72D9FF),
+    this.tint = const Color(0xFFFFA726),
     this.showHud = true,
     this.state = OcrOverlayState.scanning,
     this.errorMessage,

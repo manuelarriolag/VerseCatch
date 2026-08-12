@@ -17,6 +17,20 @@
 - Se ajustó el render del overlay OCR para que se dibuje dentro del área real de la imagen mostrada (BoxFit contain) y no sobre todo el cuadro de vista previa.
 - Se atenuó la tipografía de las leyendas de estado bajo el botón "Continuar" en Paso 2 para que funcionen como mensajes secundarios (estilo muteado).
 - Se implementó la opción 1 para TG3: al continuar desde Paso 3, la detección de citas ahora muestra overlay visual de escaneo sobre el panel de revisión para todas las fuentes antes de pasar a Paso 4.
+- Se ajustó el color principal de la animación OCR a un naranja de mayor contraste para mejorar visibilidad en fondos blancos.
+- Se estandarizaron espaciados verticales en pasos del wizard para mantener ritmo visual consistente entre móvil y escritorio.
+- Se reforzó accesibilidad visual global ajustando estados disabled/focus en botones e iconos, y aumentando contraste del chip activo de citas.
+- Se agregó preferencia persistente "Reducir animaciones" (Paso 6), que reduce a duración cero animaciones no críticas de OCR, detección y feedback.
+- Paso 2 ahora incluye acciones "Rotar" (90° por toque) y "Recortar" (selector rectangular) antes de OCR; el OCR usa exactamente esa orientación y recorte.
+- Paso 3 ahora incluye panel colapsable de ayuda con ejemplos de formato de citas y navegación rápida entre coincidencias (anterior/siguiente) con auto-scroll al fragmento.
+- Paso 3 ahora resalta la cita activa de la navegación rápida con un color distinto basado en el tema activo, diferenciándola claramente de las demás citas detectadas.
+- Paso 5 ahora hace auto-scroll horizontal del chip activo al navegar, mejora el contraste del chip seleccionado y permite alternar vista "Una cita" / "Compacta" conservando índice activo.
+- Se corrigió el auto-scroll de chips en Paso 5 para usar medición real del chip activo dentro del viewport y asegurar que siempre quede completamente visible, evitando recortes parciales o invisibilidad.
+- En Paso 5 la vista compacta quedó como predeterminada y ahora cada elemento muestra prefijo de índice "(n de N)" antes de la cita.
+- Se eliminó el icono de selección del control segmentado de vistas (resaltado visual únicamente), evitando cambios de iconografía al activar una vista.
+- Se mejoró la forma del borde de chips inferiores (radio/contorno/densidad) para que el redondeado se vea regular y consistente.
+- Paso 6 ahora muestra vista previa por pestañas antes de copiar/exportar; además valida nombre/carpeta (vacío, caracteres inválidos, ruta inaccesible) y muestra acciones de corrección directa.
+- Paso 6 ahora persiste historial de últimas 5 exportaciones (fecha/hora, formato y ruta) y permite reintentar exportación desde cada entrada.
 
 ## Decisiones de alto impacto
 - 2026-07-29 00:00: Se decidió mantener el resaltado únicamente en la pantalla de revisión y no durante la edición en vivo para reducir ruido visual y preservar la experiencia de escritura.
@@ -27,3 +41,10 @@
 - 2026-08-11 18:32: Para asegurar que el marco OCR quede dentro de la imagen real, se implementó cálculo de superficie efectiva por relación de aspecto y se restringió el overlay a esa superficie; se añadió fallback temporal para mantener aparición inmediata del overlay mientras se resuelve el tamaño fuente.
 - 2026-08-11 18:44: Se ajustó el estilo de leyendas de estado en Paso 2 a una apariencia muteada para reducir jerarquía visual sin ocultar información operativa durante OCR.
 - 2026-08-11 18:47: Se eligió e implementó la opción 1 para consistencia UX: aplicar la misma narrativa visual de escaneo en Paso 3 durante la detección de citas (todas las fuentes), con duración visual mínima y transición controlada a Paso 4.
+- 2026-08-12 15:12: Se reemplazó el MAIN_COLOR por un tono naranja para aumentar contraste sobre fondos claros y mejorar la percepción del estado de escaneo sin cambiar el flujo funcional.
+- 2026-08-12 15:40: Se incorporó la preferencia persistente "Reducir animaciones" y se aplicó en overlays y transiciones no críticas para mejorar accesibilidad sin afectar la secuencia funcional del wizard.
+- 2026-08-12 15:40: Se decidió que el OCR procese la imagen transformada por el usuario (rotación + recorte), priorizando control manual de calidad sobre el recorte central automático previo.
+- 2026-08-12 15:40: Se añadió una fase de confirmación previa por pestañas para salida (copiar/exportar), junto con historial de exportaciones y validaciones preventivas de ruta/nombre para minimizar errores operativos.
+- 2026-08-12 16:09: Se adoptó el colorScheme activo para diferenciar la coincidencia en foco durante la navegación rápida del Paso 3, evitando colores fijos para preservar consistencia visual entre temas.
+- 2026-08-12 16:16: Se descartó el desplazamiento horizontal por estimación fija de ancho en chips y se migró a posicionamiento por render bounds para garantizar visibilidad completa del chip activo en todas las longitudes de referencia.
+- 2026-08-12 16:26: Se priorizó lectura secuencial en Explorar citas configurando lista compacta por defecto con numeración explícita; además se deshabilitó el icono de selección del segmentado para preservar estabilidad visual del icono y dejar la selección al estado resaltado.
