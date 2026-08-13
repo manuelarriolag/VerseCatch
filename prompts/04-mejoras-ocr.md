@@ -18,8 +18,8 @@
 - [x] TG3. Extiende la animación para que incluya el proceso que ejecuta la detección de las citas bíblicas, es decir, el OCR actualmente es la parte que extrae el texto de imagenes o fotografías, sin embargo ha una dificultad y necesito que me hagas algunas sugerencias. La dificultad es la siguiente:
   - El OCR solo se lanza si el usuario elije "seleccionar una imagen" o "tomar fotografía", pero todas las fuentes deben concluir en el "Paso 4 - Detectar citas", por lo cual necesito opciones para que siga siendo consistencia la experiencia de usuario, a mi se me ocurre agregar una pantalla temporal que muestre una imagen dummy para que se ejecute la animación de la detección de citas (sin OCR), pero deseo saber tus sugerencias.
 - [x] TG4. Cambia el color principal (MAIN_COLOR) de la animación por algo naranja ya que en fondos blancos no se alcanza a notar el actual.
-- [ ] TG5. Modifica el ancho de las cajas de la animación, para que ocupen el 90/95 del marco generado por el OCR,
-- [ ] TG6. Además de las cajas de la animación, agrega  otras opciones de animación aleatorias, posiblemente partículas grandes y pequeñas pulsantes (como respirando) o lo que consideres adecuadas.
+- [x] TG5. Modifica el ancho de las cajas de la animación, para que ocupen el 85% del marco generado por el OCR,
+- [x] TG6. Además de las cajas de la animación, agrega  tres opciones de animación que se muestren en forma aleatoria, nunca todas al mismo tiempo, posiblemente partículas grandes y pequeñas pulsantes (como respirando), rayos que atraviezan y las que consideres adecuadas.
 
 
 ## Notas de alto impacto / riesgo
@@ -28,3 +28,5 @@
 - 2026-08-11 18:44: Se unificó la tipografía de las leyendas de estado debajo del botón "Continuar" con un estilo visual más tenue (color y peso reducidos) para que se perciban como mensajes de apoyo y no como foco primario de la pantalla.
 - 2026-08-11 18:47: Se adoptó la opción 1 para TG3: reutilizar la animación de escaneo en el Paso 3 (Revisar texto) durante la detección de citas bíblicas para todas las fuentes, evitando pantallas dummy y manteniendo consistencia visual hasta la transición al Paso 4.
 - 2026-08-12 15:12: Se cambió el MAIN_COLOR por un naranja de mayor contraste para mejorar legibilidad del marco, línea de escaneo y HUD sobre fondos claros sin alterar la estructura de la animación.
+- 2026-08-13 14:47: Las cajas de detección del overlay OCR se normalizaron para ocupar 85% del ancho del marco interno, conservando variación vertical y visibilidad progresiva para mejorar consistencia visual entre imágenes con diferentes proporciones.
+- 2026-08-13 14:47: Se incorporaron tres efectos ambientales exclusivos y aleatorios por sesión de escaneo (partículas pulsantes, rayos de cruce y nodos orbitales), evitando sobrecarga visual por superposición y manteniendo una sola variante activa a la vez.

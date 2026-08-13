@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 
 enum OcrOverlayState { scanning, completed, failed }
 
+enum _OcrAmbientEffect { pulseParticles, crossingRays, orbitingNodes }
+
 class OcrScanOverlay extends StatefulWidget {
   const OcrScanOverlay({
     super.key,
@@ -29,10 +31,17 @@ class OcrScanOverlay extends StatefulWidget {
 class _OcrScanOverlayState extends State<OcrScanOverlay>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
+  late _OcrAmbientEffect _ambientEffect;
+
+  _OcrAmbientEffect _pickAmbientEffect() {
+    final options = _OcrAmbientEffect.values;
+    return options[math.Random().nextInt(options.length)];
+  }
 
   @override
   void initState() {
     super.initState();
+    _ambientEffect = _pickAmbientEffect();
     _controller = AnimationController(vsync: this, duration: widget.duration);
     if (widget.active) {
       _controller.repeat();
@@ -44,6 +53,9 @@ class _OcrScanOverlayState extends State<OcrScanOverlay>
     super.didUpdateWidget(oldWidget);
     if (oldWidget.duration != widget.duration) {
       _controller.duration = widget.duration;
+    }
+    if (widget.active && !oldWidget.active) {
+      _ambientEffect = _pickAmbientEffect();
     }
     if (widget.active && !_controller.isAnimating) {
       _controller.repeat();
@@ -90,6 +102,7 @@ class _OcrScanOverlayState extends State<OcrScanOverlay>
                     progress: _controller.value,
                     tint: widget.tint,
                     state: widget.state,
+                    effect: _ambientEffect,
                   ),
                 ),
                 if (widget.showHud)
@@ -234,11 +247,15 @@ class _OcrScanPainter extends CustomPainter {
     required this.progress,
     required this.tint,
     required this.state,
+    required this.effect,
   });
 
   final double progress;
   final Color tint;
   final OcrOverlayState state;
+  final _OcrAmbientEffect effect;
+
+  static const double _textBoxWidthFactor = 0.85;
 
   static const List<Rect> _boxAnchors = <Rect>[
     Rect.fromLTWH(0.16, 0.21, 0.56, 0.055),
@@ -267,7 +284,15 @@ class _OcrScanPainter extends CustomPainter {
 
     final scanY = frameRect.top + frameRect.height * progress;
     _paintScanBeam(canvas, frameRect, scanY);
-    _paintParticles(canvas, frameRect, scanY);
+
+    switch (effect) {
+      case _OcrAmbientEffect.pulseParticles:
+        _paintPulseParticles(canvas, frameRect, scanY);
+      case _OcrAmbientEffect.crossingRays:
+        _paintCrossingRays(canvas, frameRect, scanY);
+      case _OcrAmbientEffect.orbitingNodes:
+        _paintOrbitingNodes(canvas, frameRect, scanY);
+    }
   }
 
   void _paintFrameCorners(Canvas canvas, Rect frameRect) {
@@ -361,11 +386,17 @@ class _OcrScanPainter extends CustomPainter {
       ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2);
 
     final scanY = frameRect.top + frameRect.height * progress;
+    final targetWidth = frameRect.width * _textBoxWidthFactor;
     for (final anchor in _boxAnchors) {
+      final anchorCenter = frameRect.left +
+          frameRect.width * (anchor.left + (anchor.width / 2));
+      final left = (anchorCenter - (targetWidth / 2))
+          .clamp(frameRect.left, frameRect.right - targetWidth)
+          .toDouble();
       final rect = Rect.fromLTWH(
-        frameRect.left + frameRect.width * anchor.left,
+        left,
         frameRect.top + frameRect.height * anchor.top,
-        frameRect.width * anchor.width,
+        targetWidth,
         frameRect.height * anchor.height,
       );
       final centerY = rect.center.dy;
@@ -396,7 +427,7 @@ class _OcrScanPainter extends CustomPainter {
     }
   }
 
-  void _paintParticles(Canvas canvas, Rect frameRect, double scanY) {
+  void _paintPulseParticles(Canvas canvas, Rect frameRect, double scanY) {
     final baseCount = state == OcrOverlayState.completed ? 8 : 12;
     for (var i = 0; i < baseCount; i++) {
       final seed = i + 1;
@@ -413,10 +444,54 @@ class _OcrScanPainter extends CustomPainter {
     }
   }
 
+  void _paintCrossingRays(Canvas canvas, Rect frameRect, double scanY) {
+    final phase = progress * (2 * math.pi);
+    final lineCount = state == OcrOverlayState.completed ? 4 : 6;
+    for (var i = 0; i < lineCount; i++) {
+      final t = i / lineCount;
+      final y = frameRect.top + (frameRect.height * t);
+      final sway = math.sin((phase * 1.3) + (i * 0.9)) * 16;
+      final alpha = (0.08 + (0.08 * ((math.cos(phase + i) + 1) / 2))).clamp(
+        0.08,
+        0.2,
+      );
+
+      final paint = Paint()
+        ..strokeWidth = 1.1
+        ..strokeCap = StrokeCap.round
+        ..color = tint.withValues(alpha: alpha);
+
+      final start = Offset(frameRect.left + sway, y);
+      final end = Offset(frameRect.right - sway, y + (scanY - y) * 0.02);
+      canvas.drawLine(start, end, paint);
+    }
+  }
+
+  void _paintOrbitingNodes(Canvas canvas, Rect frameRect, double scanY) {
+    final center = Offset(frameRect.center.dx, scanY);
+    final maxRadius = frameRect.width * 0.28;
+    final nodeCount = state == OcrOverlayState.completed ? 6 : 9;
+
+    for (var i = 0; i < nodeCount; i++) {
+      final phase = (i / nodeCount) * 2 * math.pi;
+      final pulse = 0.65 + (0.35 * ((math.sin((progress * 14) + i) + 1) / 2));
+      final orbitRadius = maxRadius * (0.32 + ((i % 3) * 0.2));
+      final dx = math.cos((progress * 5.4) + phase) * orbitRadius;
+      final dy = math.sin((progress * 6.2) + phase) * (frameRect.height * 0.04);
+      final node = Offset(center.dx + dx, center.dy + dy);
+      if (!frameRect.contains(node)) continue;
+
+      final nodePaint = Paint()
+        ..color = tint.withValues(alpha: (0.1 + (0.2 * pulse)).clamp(0.1, 0.3));
+      canvas.drawCircle(node, 1.0 + ((i % 4) * 0.35), nodePaint);
+    }
+  }
+
   @override
   bool shouldRepaint(covariant _OcrScanPainter oldDelegate) {
     return oldDelegate.progress != progress ||
         oldDelegate.tint != tint ||
-        oldDelegate.state != state;
+        oldDelegate.state != state ||
+        oldDelegate.effect != effect;
   }
 }

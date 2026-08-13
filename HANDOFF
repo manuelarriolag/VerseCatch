@@ -29,8 +29,13 @@
 - En Paso 5 la vista compacta quedó como predeterminada y ahora cada elemento muestra prefijo de índice "(n de N)" antes de la cita.
 - Se eliminó el icono de selección del control segmentado de vistas (resaltado visual únicamente), evitando cambios de iconografía al activar una vista.
 - Se mejoró la forma del borde de chips inferiores (radio/contorno/densidad) para que el redondeado se vea regular y consistente.
+- Se aplicó el ajuste visual del Paso 5 guiado por mock: el alternador de vista se movió a la parte superior y cambió etiquetas a "Tarjeta" y "Lista", el selector de versión bíblica quedó alineado a la derecha, y el botón de copiar se integró dentro del panel de texto bíblico con tooltip "Copiar texto".
+- El panel de visualización del texto bíblico ahora usa borde fuerte y sombreado para reforzar jerarquía visual y separación respecto del listado de citas.
+- Se cambió el sombreado del panel de texto bíblico de externo a interno, conservando el borde fuerte pero eliminando el halo exterior para un acabado más limpio en el Paso 5.
 - Paso 6 ahora muestra vista previa por pestañas antes de copiar/exportar; además valida nombre/carpeta (vacío, caracteres inválidos, ruta inaccesible) y muestra acciones de corrección directa.
 - Paso 6 ahora persiste historial de últimas 5 exportaciones (fecha/hora, formato y ruta) y permite reintentar exportación desde cada entrada.
+- En la animación OCR, las cajas de detección ahora ocupan el 85% del ancho del marco interno para que la lectura visual sea más uniforme dentro del área de escaneo.
+- La animación OCR ahora selecciona aleatoriamente una sola variante ambiental por sesión (partículas pulsantes, rayos de cruce o nodos orbitales), evitando mostrar múltiples efectos simultáneamente.
 
 ## Decisiones de alto impacto
 - 2026-07-29 00:00: Se decidió mantener el resaltado únicamente en la pantalla de revisión y no durante la edición en vivo para reducir ruido visual y preservar la experiencia de escritura.
@@ -48,3 +53,7 @@
 - 2026-08-12 16:09: Se adoptó el colorScheme activo para diferenciar la coincidencia en foco durante la navegación rápida del Paso 3, evitando colores fijos para preservar consistencia visual entre temas.
 - 2026-08-12 16:16: Se descartó el desplazamiento horizontal por estimación fija de ancho en chips y se migró a posicionamiento por render bounds para garantizar visibilidad completa del chip activo en todas las longitudes de referencia.
 - 2026-08-12 16:26: Se priorizó lectura secuencial en Explorar citas configurando lista compacta por defecto con numeración explícita; además se deshabilitó el icono de selección del segmentado para preservar estabilidad visual del icono y dejar la selección al estado resaltado.
+- 2026-08-12 17:09: Se reajustó la composición del Paso 5 para privilegiar controles de navegación (alternador arriba y versión a la derecha), mover la acción de copiado al contexto directo del texto bíblico y aumentar el peso visual del panel con borde/sombra para mejorar descubribilidad y foco de lectura.
+- 2026-08-12 17:12: Se reemplazó la sombra externa por sombra interna en el panel bíblico del Paso 5 para mantener contraste del contenedor sin expandir ruido visual fuera del marco.
+- 2026-08-13 14:47: Se normalizó el ancho de cajas del overlay OCR al 85% del marco para reforzar consistencia de lectura en el barrido, sin alterar la secuencia funcional del reconocimiento.
+- 2026-08-13 14:47: Se introdujo variación visual aleatoria con tres estilos exclusivos de efecto ambiental por corrida de OCR, mitigando monotonía sin incrementar densidad visual por solapamiento de capas.
