@@ -322,7 +322,9 @@ class VerseCatchApp extends StatelessWidget {
           disabledColor: colorScheme.surfaceContainerHighest,
           labelStyle: TextStyle(color: colorScheme.onSurface),
           secondaryLabelStyle: TextStyle(color: colorScheme.onPrimaryContainer),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
         ),
       ),
       home: WizardHomePage(
@@ -2038,7 +2040,8 @@ class ExportHistoryItem {
 
   factory ExportHistoryItem.fromMap(Map<String, Object?> map) {
     return ExportHistoryItem(
-      timestamp: DateTime.tryParse(map['timestamp'] as String? ?? '') ??
+      timestamp:
+          DateTime.tryParse(map['timestamp'] as String? ?? '') ??
           DateTime.fromMillisecondsSinceEpoch(0),
       format: map['format'] as String? ?? 'txt',
       filePath: map['file_path'] as String? ?? '',
@@ -2220,9 +2223,7 @@ class VerseCaptureStore {
         .whereType<Map>()
         .map(
           (item) => ExportHistoryItem.fromMap(
-            item.map(
-              (key, value) => MapEntry(key.toString(), value),
-            ),
+            item.map((key, value) => MapEntry(key.toString(), value)),
           ),
         )
         .where((item) => item.filePath.trim().isNotEmpty)
@@ -2231,11 +2232,15 @@ class VerseCaptureStore {
     return parsed.take(limit).toList(growable: false);
   }
 
-  Future<void> pushExportHistory(ExportHistoryItem item, {int limit = 5}) async {
+  Future<void> pushExportHistory(
+    ExportHistoryItem item, {
+    int limit = 5,
+  }) async {
     final current = await recentExports(limit: limit);
     final deduped = <ExportHistoryItem>[item];
     for (final existing in current) {
-      if (existing.filePath == item.filePath && existing.format == item.format) {
+      if (existing.filePath == item.filePath &&
+          existing.format == item.format) {
         continue;
       }
       deduped.add(existing);
@@ -3432,7 +3437,8 @@ class _WizardHomePageState extends State<WizardHomePage> {
       }
     } finally {
       final elapsedVisual = DateTime.now().difference(visualStart);
-      final remaining = _motionDuration(_minimumDetectionVisualDuration) - elapsedVisual;
+      final remaining =
+          _motionDuration(_minimumDetectionVisualDuration) - elapsedVisual;
       if (remaining > Duration.zero) {
         await Future<void>.delayed(remaining);
       }
@@ -3452,12 +3458,16 @@ class _WizardHomePageState extends State<WizardHomePage> {
       }
     });
 
-    await Future<void>.delayed(_motionDuration(_detectionCompletionHoldDuration));
+    await Future<void>.delayed(
+      _motionDuration(_detectionCompletionHoldDuration),
+    );
     if (!mounted) return;
 
     setState(() => _reviewDetectionVisualState = _OcrVisualState.exiting);
 
-    await Future<void>.delayed(_motionDuration(_detectionCompletionHoldDuration));
+    await Future<void>.delayed(
+      _motionDuration(_detectionCompletionHoldDuration),
+    );
     if (!mounted) return;
 
     setState(() {
@@ -3608,22 +3618,36 @@ class _WizardHomePageState extends State<WizardHomePage> {
                         ),
                       ),
                       const SizedBox(height: kWizardPanelSpacing),
-                      Text('Horizontal ${((draft.left + (draft.width / 2)) * 100).round()}%'),
+                      Text(
+                        'Horizontal ${((draft.left + (draft.width / 2)) * 100).round()}%',
+                      ),
                       Slider(
                         value: draft.left,
                         min: 0,
                         max: 1 - draft.width,
                         onChanged: (v) => updateRect(
-                          Rect.fromLTWH(v, draft.top, draft.width, draft.height),
+                          Rect.fromLTWH(
+                            v,
+                            draft.top,
+                            draft.width,
+                            draft.height,
+                          ),
                         ),
                       ),
-                      Text('Vertical ${((draft.top + (draft.height / 2)) * 100).round()}%'),
+                      Text(
+                        'Vertical ${((draft.top + (draft.height / 2)) * 100).round()}%',
+                      ),
                       Slider(
                         value: draft.top,
                         min: 0,
                         max: 1 - draft.height,
                         onChanged: (v) => updateRect(
-                          Rect.fromLTWH(draft.left, v, draft.width, draft.height),
+                          Rect.fromLTWH(
+                            draft.left,
+                            v,
+                            draft.width,
+                            draft.height,
+                          ),
                         ),
                       ),
                       Text('Ancho ${(draft.width * 100).round()}%'),
@@ -3890,7 +3914,9 @@ class _WizardHomePageState extends State<WizardHomePage> {
         completed: true,
       );
       refreshDialog?.call();
-      await Future<void>.delayed(_motionDuration(const Duration(milliseconds: 650)));
+      await Future<void>.delayed(
+        _motionDuration(const Duration(milliseconds: 650)),
+      );
       if (Navigator.canPop(context)) {
         Navigator.of(context).pop();
       }
@@ -4122,7 +4148,8 @@ class _WizardHomePageState extends State<WizardHomePage> {
               final invalidName = RegExp(r'[<>:"/\\|?*]').hasMatch(rawFileName);
               if (rawFileName.isEmpty) {
                 setState(() {
-                  validationError = 'El nombre del archivo no puede estar vacío.';
+                  validationError =
+                      'El nombre del archivo no puede estar vacío.';
                 });
                 return;
               }
@@ -4162,10 +4189,9 @@ class _WizardHomePageState extends State<WizardHomePage> {
               }
 
               if (!context.mounted) return;
-              Navigator.of(dialogContext).pop((
-                directoryPath: rawDirectory,
-                fileName: rawFileName,
-              ));
+              Navigator.of(
+                dialogContext,
+              ).pop((directoryPath: rawDirectory, fileName: rawFileName));
             }
 
             return AlertDialog(
@@ -4215,9 +4241,10 @@ class _WizardHomePageState extends State<WizardHomePage> {
                         alignment: Alignment.centerLeft,
                         child: Text(
                           validationError!,
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: Theme.of(context).colorScheme.error,
-                          ),
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(
+                                color: Theme.of(context).colorScheme.error,
+                              ),
                         ),
                       ),
                     ],
@@ -4229,10 +4256,7 @@ class _WizardHomePageState extends State<WizardHomePage> {
                   onPressed: () => Navigator.of(dialogContext).pop(),
                   child: const Text('Cancelar'),
                 ),
-                FilledButton(
-                  onPressed: submit,
-                  child: const Text('Exportar'),
-                ),
+                FilledButton(onPressed: submit, child: const Text('Exportar')),
               ],
             );
           },
@@ -5490,8 +5514,8 @@ class _ImagePickerContent extends StatelessWidget {
     OcrOverlayState mapOverlayState() {
       return switch (ocrVisualState) {
         _OcrVisualState.failed => OcrOverlayState.failed,
-        _OcrVisualState.completed || _OcrVisualState.exiting =>
-          OcrOverlayState.completed,
+        _OcrVisualState.completed ||
+        _OcrVisualState.exiting => OcrOverlayState.completed,
         _ => OcrOverlayState.scanning,
       };
     }
@@ -5599,10 +5623,7 @@ class _ImagePickerContent extends StatelessWidget {
           ],
           if (processing && hasImage) ...[
             const SizedBox(height: 12),
-            Text(
-              'Escaneando imagen con OCR...',
-              style: mutedStatusTextStyle,
-            ),
+            Text('Escaneando imagen con OCR...', style: mutedStatusTextStyle),
           ] else if (hasImage) ...[
             const SizedBox(height: 12),
             FilledButton.icon(
@@ -5621,10 +5642,7 @@ class _ImagePickerContent extends StatelessWidget {
           ],
           if (ocrFinished && !processing) ...[
             const SizedBox(height: 10),
-            Text(
-              'Texto identificado ✓',
-              style: mutedStatusTextStyle,
-            ),
+            Text('Texto identificado ✓', style: mutedStatusTextStyle),
           ],
         ],
       ),
@@ -5852,7 +5870,10 @@ class _CropOverlayMask extends StatelessWidget {
 }
 
 class _CropSelectionPreview extends StatelessWidget {
-  const _CropSelectionPreview({required this.imagePath, required this.cropRect});
+  const _CropSelectionPreview({
+    required this.imagePath,
+    required this.cropRect,
+  });
 
   final String imagePath;
   final Rect cropRect;
@@ -6108,8 +6129,8 @@ class _ReviewTextStepState extends State<_ReviewTextStep> {
 
     OcrOverlayState mapOverlayState() {
       return switch (widget.detectionVisualState) {
-        _OcrVisualState.completed || _OcrVisualState.exiting =>
-          OcrOverlayState.completed,
+        _OcrVisualState.completed ||
+        _OcrVisualState.exiting => OcrOverlayState.completed,
         _ => OcrOverlayState.scanning,
       };
     }
@@ -6204,9 +6225,12 @@ class _ReviewTextStepState extends State<_ReviewTextStep> {
                                           : 'Cita ${_activePreviewMatchIndex + 1} de ${_previewMatches.length}',
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
-                                      style: theme.textTheme.bodySmall?.copyWith(
-                                        color: theme.colorScheme.onSurfaceVariant,
-                                      ),
+                                      style: theme.textTheme.bodySmall
+                                          ?.copyWith(
+                                            color: theme
+                                                .colorScheme
+                                                .onSurfaceVariant,
+                                          ),
                                     ),
                                   ),
                                   IconButton(
@@ -6230,7 +6254,10 @@ class _ReviewTextStepState extends State<_ReviewTextStep> {
                                 child: SingleChildScrollView(
                                   controller: _previewScrollController,
                                   child: SelectableText.rich(
-                                    _buildHighlightedPreview(previewText, theme),
+                                    _buildHighlightedPreview(
+                                      previewText,
+                                      theme,
+                                    ),
                                     style: theme.textTheme.bodyMedium?.copyWith(
                                       height: 1.5,
                                     ),
@@ -6250,12 +6277,21 @@ class _ReviewTextStepState extends State<_ReviewTextStep> {
                             setState(() => _showEditingHelp = expanded);
                           },
                           title: const Text('Ayuda de formato de citas'),
-                          subtitle: const Text('Ejemplos válidos para detección'),
-                          childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                          subtitle: const Text(
+                            'Ejemplos válidos para detección',
+                          ),
+                          childrenPadding: const EdgeInsets.fromLTRB(
+                            16,
+                            0,
+                            16,
+                            12,
+                          ),
                           children: const [
                             Align(
                               alignment: Alignment.centerLeft,
-                              child: Text('Ejemplos: Juan 3:16, Salmos 23:1-4, 1 Corintios 13:4'),
+                              child: Text(
+                                'Ejemplos: Juan 3:16, Salmos 23:1-4, 1 Corintios 13:4',
+                              ),
                             ),
                             SizedBox(height: 6),
                             Align(
@@ -6676,78 +6712,20 @@ class _ExploreRefsStep extends StatelessWidget {
       child: Column(
         children: [
           // Header row
-          Row(
-            children: [
-              Expanded(
-                child: Row(
-                  children: [
-                    if (activeReference != null)
-                      Flexible(
-                        child: Text(
-                          activeReference!,
-                          style: theme.textTheme.titleLarge?.copyWith(
-                            color: theme.colorScheme.primary,
-                            fontWeight: FontWeight.bold,
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    const SizedBox(width: 8),
-                    DropdownButtonHideUnderline(
-                      child: DropdownButton<int>(
-                        value: selectedBibleVersionId,
-                        isDense: true,
-                        style: theme.textTheme.titleSmall,
-                        items: kSupportedBibleVersions
-                            .where((v) => v.enabled)
-                            .map(
-                              (v) => DropdownMenuItem<int>(
-                                value: v.id,
-                                child: Text(v.code),
-                              ),
-                            )
-                            .toList(),
-                        onChanged: onBibleVersionChanged,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              IconButton.filledTonal(
-                onPressed: bibleText != null ? onCopyBibleText : null,
-                tooltip: 'Copiar versículo',
-                icon: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 220),
-                  child: copiedFeedbackVisible
-                      ? const Icon(
-                          key: ValueKey('check'),
-                          Icons.check_circle,
-                          color: Colors.green,
-                        )
-                      : const Icon(
-                          key: ValueKey('copy'),
-                          Icons.content_copy_outlined,
-                        ),
-                ),
-              ),
-            ],
-          ),
           const SizedBox(height: 12),
           Row(
             children: [
-              const Text('Vista'),
-              const SizedBox(width: 8),
               SegmentedButton<bool>(
                 showSelectedIcon: false,
                 segments: const [
                   ButtonSegment<bool>(
                     value: false,
-                    label: Text('Una cita'),
-                    icon: Icon(Icons.view_carousel_outlined),
+                    label: Text('Tarjeta'),
+                    icon: Icon(Icons.style_outlined),
                   ),
                   ButtonSegment<bool>(
                     value: true,
-                    label: Text('Compacta'),
+                    label: Text('Lista'),
                     icon: Icon(Icons.view_list_outlined),
                   ),
                 ],
@@ -6756,6 +6734,24 @@ class _ExploreRefsStep extends StatelessWidget {
                   if (selection.isEmpty) return;
                   onToggleCompactView(selection.first);
                 },
+              ),
+              const Spacer(),
+              DropdownButtonHideUnderline(
+                child: DropdownButton<int>(
+                  value: selectedBibleVersionId,
+                  isDense: true,
+                  style: theme.textTheme.titleSmall,
+                  items: kSupportedBibleVersions
+                      .where((v) => v.enabled)
+                      .map(
+                        (v) => DropdownMenuItem<int>(
+                          value: v.id,
+                          child: Text(v.code),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: onBibleVersionChanged,
+                ),
               ),
             ],
           ),
@@ -6777,9 +6773,12 @@ class _ExploreRefsStep extends StatelessWidget {
                       const VerticalDivider(width: 16),
                       Expanded(
                         child: _VersePanel(
+                          activeReference: activeReference,
                           bibleText: bibleText,
                           bibleMessage: bibleMessage,
                           loading: loadingBibleText,
+                          copiedFeedbackVisible: copiedFeedbackVisible,
+                          onCopyBibleText: onCopyBibleText,
                         ),
                       ),
                     ],
@@ -6799,9 +6798,12 @@ class _ExploreRefsStep extends StatelessWidget {
                       const SizedBox(height: 8),
                       Expanded(
                         child: _VersePanel(
+                          activeReference: activeReference,
                           bibleText: bibleText,
                           bibleMessage: bibleMessage,
                           loading: loadingBibleText,
+                          copiedFeedbackVisible: copiedFeedbackVisible,
+                          onCopyBibleText: onCopyBibleText,
                         ),
                       ),
                     ],
@@ -6810,9 +6812,12 @@ class _ExploreRefsStep extends StatelessWidget {
                     children: [
                       Expanded(
                         child: _VersePanel(
+                          activeReference: activeReference,
                           bibleText: bibleText,
                           bibleMessage: bibleMessage,
                           loading: loadingBibleText,
+                          copiedFeedbackVisible: copiedFeedbackVisible,
+                          onCopyBibleText: onCopyBibleText,
                         ),
                       ),
                       const SizedBox(height: 8),
@@ -6954,7 +6959,9 @@ class _RefChipsPanelState extends State<_RefChipsPanel> {
     _syncChipKeys();
     if (oldWidget.currentIndex != widget.currentIndex ||
         oldWidget.refs.length != widget.refs.length) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToActiveChip());
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _scrollToActiveChip(),
+      );
     }
   }
 
@@ -6969,14 +6976,17 @@ class _RefChipsPanelState extends State<_RefChipsPanel> {
     final index = widget.currentIndex.clamp(0, widget.refs.length - 1);
     final chipContext = _chipKeys[index].currentContext;
     if (chipContext == null) return;
-    final scrollContext = _scrollController.position.context.notificationContext;
+    final scrollContext =
+        _scrollController.position.context.notificationContext;
     if (scrollContext == null) return;
 
     final chipBox = chipContext.findRenderObject() as RenderBox?;
     final viewportBox = scrollContext.findRenderObject() as RenderBox?;
     if (chipBox == null || viewportBox == null) return;
 
-    final chipOffset = chipBox.localToGlobal(Offset.zero, ancestor: viewportBox).dx;
+    final chipOffset = chipBox
+        .localToGlobal(Offset.zero, ancestor: viewportBox)
+        .dx;
     final chipWidth = chipBox.size.width;
     const edgePadding = 8.0;
     final viewportWidth = viewportBox.size.width;
@@ -7056,13 +7066,19 @@ class _RefChipsPanelState extends State<_RefChipsPanel> {
 
 class _VersePanel extends StatelessWidget {
   const _VersePanel({
+    required this.activeReference,
     required this.bibleText,
     required this.bibleMessage,
     required this.loading,
+    required this.copiedFeedbackVisible,
+    required this.onCopyBibleText,
   });
+  final String? activeReference;
   final String? bibleText;
   final String bibleMessage;
   final bool loading;
+  final bool copiedFeedbackVisible;
+  final VoidCallback onCopyBibleText;
 
   @override
   Widget build(BuildContext context) {
@@ -7075,27 +7091,84 @@ class _VersePanel extends StatelessWidget {
       width: double.infinity,
       height: double.infinity,
       margin: EdgeInsets.zero,
-      padding: EdgeInsets.zero,
-      decoration: BoxDecoration(color: theme.colorScheme.surfaceContainerLow),
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: text != null
-            ? Text(
-                '"$text"',
-                style: theme.textTheme.bodyLarge?.copyWith(
-                  fontStyle: FontStyle.italic,
-                  fontSize: 18,
-                  fontFamily: 'Times New Roman',
-                  fontFamilyFallback: const ['Times', 'Noto Serif', 'serif'],
-                  height: 1.6,
-                ),
-              )
-            : Text(
-                bibleMessage,
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerLow,
+        border: Border.all(color: theme.colorScheme.outline, width: 2),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.22),
+            blurRadius: 14,
+            spreadRadius: 1,
+            blurStyle: BlurStyle.inner,
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  activeReference == null
+                      ? bibleMessage
+                      : '${activeReference!}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
+              IconButton.filledTonal(
+                onPressed: bibleText != null ? onCopyBibleText : null,
+                tooltip: 'Copiar texto',
+                icon: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 220),
+                  child: copiedFeedbackVisible
+                      ? const Icon(
+                          key: ValueKey('check'),
+                          Icons.check_circle,
+                          color: Colors.green,
+                        )
+                      : const Icon(
+                          key: ValueKey('copy'),
+                          Icons.content_copy_outlined,
+                        ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+              child: text != null
+                  ? Text(
+                      '"$text"',
+                      style: theme.textTheme.bodyLarge?.copyWith(
+                        fontStyle: FontStyle.italic,
+                        fontSize: 18,
+                        fontFamily: 'Times New Roman',
+                        fontFamilyFallback: const [
+                          'Times',
+                          'Noto Serif',
+                          'serif',
+                        ],
+                        height: 1.6,
+                      ),
+                    )
+                  : Text(
+                      bibleMessage,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+            ),
+          ),
+        ],
       ),
     );
   }

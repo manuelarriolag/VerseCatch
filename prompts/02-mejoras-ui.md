@@ -36,7 +36,7 @@
 - [x] TG6. Mejora la accesibilidad visual global de la UI aplicando contraste mínimo AA en textos, botones y chips; incluye estados hover/focus/disabled claramente distinguibles.
 
 - [x] TG7. Agrega una preferencia "Reducir animaciones" para desactivar animaciones no críticas, y haz que esta preferencia persista entre sesiones.
-
+  
 ## Paso 2. Obtener texto
 
 - [x] T2.1. Si en el paso previo se eligió la opción "Elegir una imagen", se muestra la pantalla "Selecciona una imagen", aplica los siguientes cambios:
@@ -78,6 +78,12 @@
 - [x] T5.9. La vista por defecto debe ser lista compacta.
 - [x] T5.10. No cambies el el icono de la vista activa, con el resaltado es suficiente.
 - [x] T5.11. Mejora el borde de los chips inferiores ya que el redondeado se ve irregular.
+- [x] T6. Aplica los siguientes cambios a la UI del paso 5 Explorar citas. Apoyate en el archivo "prompts/cambios al paso 5 - explorar citas.png" como una guí visual.
+  - [x] T6.1. Mover el alternador de vista  hacia arriba y cambiar el texto.
+  - [x] T6.2. Mover a la derecha el selector de version bíblica.
+  - [x] T6.3. Coloca el botón copiar adentro del panel visualizar texto bíblico, y cambia el tooltip del botón por "Copiar texto".
+  - [x] T6.4. Coloca un borde fuerte con efecto de sombreado al rededor del panel visualizar texto bíblico
+  - [x] T6.4b. Cambia el sombreado actual por un sombreado interno.
 
 ## Paso 6. Guardar
 - [x] T6.1. Agrega un checkbox que permita incluir el texto bíblico de todas las citas encontradas, el valor de este checkbox debe persistirse entre sesiones.
@@ -115,4 +121,6 @@
 - 2026-08-12 16:09: En Paso 3 se distinguió visualmente la cita activa durante la navegación rápida usando colores del tema activo (primaryContainer/onPrimaryContainer), manteniendo un estilo secundario para las demás coincidencias.
 - 2026-08-12 16:16: Se reemplazó el cálculo aproximado de scroll horizontal de chips en Paso 5 por un ajuste basado en medición real de render (keys + RenderBox), garantizando que el chip activo quede completamente visible dentro del viewport.
 - 2026-08-12 16:26: En Paso 5 se estableció la vista compacta como predeterminada, agregando prefijo de índice por cita en formato "(n de N)"; además se desactivó el icono de selección del segmentado para no alterar el icono activo y se refinó el contorno de chips inferiores con forma y densidad consistente.
+- 2026-08-12 17:09: En Paso 5 se reordenó la cabecera priorizando el alternador de vista en la parte superior (renombrado a "Tarjeta" y "Lista"), se movió el selector de versión bíblica al extremo derecho, se integró el botón de copiar dentro del panel de texto bíblico con tooltip "Copiar texto" y se aplicó un borde fuerte con sombreado al panel para enfatizar su jerarquía visual.
+- 2026-08-12 17:12: En Paso 5 se sustituyó el sombreado externo del panel de texto bíblico por sombreado interno para mantener énfasis de contenedor sin proyectar halo externo, mejorando la limpieza visual del bloque en layouts compactos.
 

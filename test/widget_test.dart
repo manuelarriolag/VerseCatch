@@ -344,7 +344,7 @@ void main() {
     await tester.tap(find.text('Continuar'));
     await tester.pumpAndSettle();
 
-    expect(find.byTooltip('Copiar versículo'), findsOneWidget);
+    expect(find.byTooltip('Copiar texto'), findsOneWidget);
     await tester.tap(find.text('Finalizar'));
     await tester.pumpAndSettle();
 
@@ -391,7 +391,7 @@ void main() {
     await tester.tap(find.text('Continuar'));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('Copiar versículo'));
+    await tester.tap(find.byTooltip('Copiar texto'));
     await tester.pumpAndSettle();
 
     expect(copiedText, isNotNull);
@@ -611,7 +611,8 @@ void main() {
 
     await _goToExploreStep(tester);
 
-    expect(find.text('Vista'), findsOneWidget);
+    expect(find.text('Tarjeta'), findsOneWidget);
+    expect(find.text('Lista'), findsOneWidget);
     expect(find.byType(FilterChip), findsNothing);
     expect(find.byType(ListTile), findsWidgets);
     expect(find.textContaining('(1 de 2)'), findsOneWidget);
@@ -623,7 +624,7 @@ void main() {
       findsNothing,
     );
 
-    await tester.tap(find.text('Una cita'));
+    await tester.tap(find.text('Tarjeta'));
     await tester.pumpAndSettle();
 
     expect(find.byType(FilterChip), findsWidgets);
@@ -631,7 +632,7 @@ void main() {
     expect(firstChip.showCheckmark, isFalse);
     expect(firstChip.shape, isA<RoundedRectangleBorder>());
 
-    await tester.tap(find.text('Compacta'));
+    await tester.tap(find.text('Lista'));
     await tester.pumpAndSettle();
 
     expect(find.byType(FilterChip), findsNothing);
@@ -641,7 +642,7 @@ void main() {
   testWidgets('keeps active explore chip fully visible when navigating', (
     WidgetTester tester,
   ) async {
-    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.physicalSize = const Size(700, 1200);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
@@ -655,7 +656,13 @@ void main() {
     ).join(' ');
     await _goToExploreStep(tester, text: refsText);
 
-    final listFinder = find.byType(ListView).last;
+    await tester.tap(find.text('Tarjeta'));
+    await tester.pumpAndSettle();
+
+    final listFinder = find.byWidgetPredicate(
+      (widget) => widget is ListView && widget.scrollDirection == Axis.horizontal,
+    );
+    expect(listFinder, findsOneWidget);
     final listRect = tester.getRect(listFinder);
 
     void assertChipFullyVisible(String label) {
