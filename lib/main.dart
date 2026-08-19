@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
+import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:camera/camera.dart';
 import 'package:file_picker/file_picker.dart';
@@ -3575,7 +3577,7 @@ class _WizardHomePageState extends State<WizardHomePage> {
     if (path == null || !File(path).existsSync()) return;
     Rect draft = _imageCropRect;
 
-    final result = await showDialog<Rect>(
+    final result = await showDialog<({Rect rect, bool applyCrop})>(
       context: context,
       builder: (dialogContext) {
         return StatefulBuilder(
@@ -3596,6 +3598,7 @@ class _WizardHomePageState extends State<WizardHomePage> {
             final media = MediaQuery.of(context);
             final compactLayout =
                 media.size.width < 420 || media.size.height < 760;
+            final compactActions = compactLayout || media.size.width < 390;
             final dialogWidth = min(560.0, media.size.width - 20);
             final dialogHeight = compactLayout
                 ? min(720.0, media.size.height - 28)
@@ -3625,7 +3628,7 @@ class _WizardHomePageState extends State<WizardHomePage> {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        'Arrastra dentro del recuadro para moverlo y usa las esquinas para ajustar el área.',
+                        'Arrastra dentro del recuadro para moverlo. Usa las esquinas y selectores laterales para ajustar el área.',
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
                           color: Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
@@ -3642,7 +3645,11 @@ class _WizardHomePageState extends State<WizardHomePage> {
                         ),
                       ),
                       const SizedBox(height: 10),
-                      Row(
+                      OverflowBar(
+                        spacing: 8,
+                        overflowSpacing: 8,
+                        alignment: MainAxisAlignment.end,
+                        overflowAlignment: OverflowBarAlignment.end,
                         children: [
                           IconButton.filledTonal(
                             onPressed: () =>
@@ -3650,15 +3657,40 @@ class _WizardHomePageState extends State<WizardHomePage> {
                             tooltip: 'Restablecer recorte',
                             icon: const Icon(Icons.refresh_rounded),
                           ),
-                          const Spacer(),
-                          TextButton(
-                            onPressed: () => Navigator.of(dialogContext).pop(),
-                            child: const Text('Cancelar'),
-                          ),
-                          const SizedBox(width: 8),
+                          if (compactActions)
+                            IconButton(
+                              tooltip: 'Cancelar',
+                              onPressed: () =>
+                                  Navigator.of(dialogContext).pop(),
+                              icon: const Icon(Icons.close_rounded),
+                            )
+                          else
+                            TextButton(
+                              onPressed: () =>
+                                  Navigator.of(dialogContext).pop(),
+                              child: const Text('Cancelar'),
+                            ),
+                          if (compactActions)
+                            FilledButton.tonal(
+                              key: const ValueKey('apply-crop-selection'),
+                              onPressed: () => Navigator.of(
+                                dialogContext,
+                              ).pop((rect: draft, applyCrop: true)),
+                              child: const Icon(Icons.content_cut_rounded),
+                            )
+                          else
+                            FilledButton.tonalIcon(
+                              key: const ValueKey('apply-crop-selection'),
+                              onPressed: () => Navigator.of(
+                                dialogContext,
+                              ).pop((rect: draft, applyCrop: true)),
+                              icon: const Icon(Icons.content_cut_rounded),
+                              label: const Text('Aplicar recorte'),
+                            ),
                           FilledButton.icon(
-                            onPressed: () =>
-                                Navigator.of(dialogContext).pop(draft),
+                            onPressed: () => Navigator.of(
+                              dialogContext,
+                            ).pop((rect: draft, applyCrop: false)),
                             icon: const Icon(Icons.check),
                             label: const Text('Continuar'),
                           ),
@@ -3675,7 +3707,14 @@ class _WizardHomePageState extends State<WizardHomePage> {
     );
 
     if (result == null || !mounted) return;
-    setState(() => _imageCropRect = result);
+    if (result.applyCrop) {
+      await _applyCropAndReplacePreview(
+        sourcePath: path,
+        cropRect: result.rect,
+      );
+      return;
+    }
+    setState(() => _imageCropRect = result.rect);
   }
 
   Future<void> _retryExportFromHistory(ExportHistoryItem item) async {
@@ -3685,6 +3724,91 @@ class _WizardHomePageState extends State<WizardHomePage> {
       presetDirectoryPath: p.dirname(path),
       presetFileName: p.basename(path),
     );
+  }
+
+  Future<void> _applyCropAndReplacePreview({
+    required String sourcePath,
+    required Rect cropRect,
+  }) async {
+    try {
+      final croppedPath = await _buildCroppedImageSource(
+        sourcePath: sourcePath,
+        cropRect: cropRect,
+      );
+      if (!mounted) return;
+      setState(() {
+        _imagePath = croppedPath;
+        _imageCropRect = const Rect.fromLTWH(0, 0, 1, 1);
+        _imageQuarterTurns = 0;
+        _ocrVisualState = _OcrVisualState.idle;
+        _ocrFinished = false;
+        _ocrErrorMessage = null;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Recorte aplicado a la imagen')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('No se pudo aplicar el recorte: $error')),
+      );
+    }
+  }
+
+  Future<String> _buildCroppedImageSource({
+    required String sourcePath,
+    required Rect cropRect,
+  }) async {
+    final bytes = await File(sourcePath).readAsBytes();
+    final decoded =
+        img.decodeImage(bytes) ?? await _decodeImageWithUiFallback(bytes);
+    if (decoded == null) {
+      throw StateError('No fue posible decodificar la imagen seleccionada.');
+    }
+
+    var working = decoded;
+    if (_imageQuarterTurns != 0) {
+      working = img.copyRotate(
+        working,
+        angle: (_imageQuarterTurns * 90).toDouble(),
+      );
+    }
+
+    final left = cropRect.left.clamp(0.0, 1.0);
+    final top = cropRect.top.clamp(0.0, 1.0);
+    final width = cropRect.width.clamp(0.1, 1.0);
+    final height = cropRect.height.clamp(0.1, 1.0);
+
+    final x = (working.width * left).round().clamp(0, working.width - 1);
+    final y = (working.height * top).round().clamp(0, working.height - 1);
+    final w = (working.width * width).round().clamp(1, working.width - x);
+    final h = (working.height * height).round().clamp(1, working.height - y);
+    final cropped = img.copyCrop(working, x: x, y: y, width: w, height: h);
+
+    final dir = await getTemporaryDirectory();
+    if (!await dir.exists()) await dir.create(recursive: true);
+    final out = p.join(
+      dir.path,
+      'crop_${DateTime.now().microsecondsSinceEpoch}.jpg',
+    );
+    await File(
+      out,
+    ).writeAsBytes(img.encodeJpg(cropped, quality: 95), flush: true);
+    return out;
+  }
+
+  Future<img.Image?> _decodeImageWithUiFallback(Uint8List sourceBytes) async {
+    try {
+      final codec = await ui.instantiateImageCodec(sourceBytes);
+      final frame = await codec.getNextFrame();
+      final pngBytes = await frame.image.toByteData(
+        format: ui.ImageByteFormat.png,
+      );
+      if (pngBytes == null) return null;
+      return img.decodeImage(pngBytes.buffer.asUint8List());
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<({String content, String? warning})>
@@ -4457,6 +4581,8 @@ class _WizardHomePageState extends State<WizardHomePage> {
     if (path == null) return;
     setState(() {
       _imagePath = path;
+      _imageQuarterTurns = 0;
+      _imageCropRect = const Rect.fromLTWH(0, 0, 1, 1);
       _ocrVisualState = _OcrVisualState.idle;
       _ocrFinished = false;
       _ocrErrorMessage = null;
@@ -5872,7 +5998,17 @@ class _CropSelectionPreview extends StatelessWidget {
   }
 }
 
-enum _CropDragTarget { move, topLeft, topRight, bottomLeft, bottomRight }
+enum _CropDragTarget {
+  move,
+  topLeft,
+  topRight,
+  bottomLeft,
+  bottomRight,
+  top,
+  bottom,
+  left,
+  right,
+}
 
 class _GestureCropEditor extends StatefulWidget {
   const _GestureCropEditor({
@@ -5912,7 +6048,12 @@ class _GestureCropEditorState extends State<_GestureCropEditor> {
     try {
       final bytes = await File(widget.imagePath).readAsBytes();
       final decoded = img.decodeImage(bytes);
-      if (!mounted || decoded == null) return;
+      if (!mounted) return;
+      if (decoded == null) {
+        // Some formats/metadata may not decode here; keep editor usable.
+        setState(() => _sourceSize = const Size(4, 3));
+        return;
+      }
       setState(() {
         _sourceSize = Size(decoded.width.toDouble(), decoded.height.toDouble());
       });
@@ -5938,7 +6079,12 @@ class _GestureCropEditorState extends State<_GestureCropEditor> {
     final top = safe.top * size.height;
     final right = (safe.left + safe.width) * size.width;
     final bottom = (safe.top + safe.height) * size.height;
-    const handleRadius = 22.0;
+    final centerX = (left + right) / 2;
+    final centerY = (top + bottom) / 2;
+    const handleRadius = 30.0;
+    const edgeHitThickness = 22.0;
+    final edgeHalfWidth = max(30.0, (right - left) * 0.2);
+    final edgeHalfHeight = max(30.0, (bottom - top) * 0.2);
 
     bool near(Offset anchor) =>
         (localPosition - anchor).distance <= handleRadius;
@@ -5947,6 +6093,26 @@ class _GestureCropEditorState extends State<_GestureCropEditor> {
     if (near(Offset(right, top))) return _CropDragTarget.topRight;
     if (near(Offset(left, bottom))) return _CropDragTarget.bottomLeft;
     if (near(Offset(right, bottom))) return _CropDragTarget.bottomRight;
+
+    final nearTopSelector =
+        (localPosition.dx - centerX).abs() <= edgeHalfWidth &&
+        (localPosition.dy - top).abs() <= edgeHitThickness;
+    if (nearTopSelector) return _CropDragTarget.top;
+
+    final nearBottomSelector =
+        (localPosition.dx - centerX).abs() <= edgeHalfWidth &&
+        (localPosition.dy - bottom).abs() <= edgeHitThickness;
+    if (nearBottomSelector) return _CropDragTarget.bottom;
+
+    final nearLeftSelector =
+        (localPosition.dx - left).abs() <= edgeHitThickness &&
+        (localPosition.dy - centerY).abs() <= edgeHalfHeight;
+    if (nearLeftSelector) return _CropDragTarget.left;
+
+    final nearRightSelector =
+        (localPosition.dx - right).abs() <= edgeHitThickness &&
+        (localPosition.dy - centerY).abs() <= edgeHalfHeight;
+    if (nearRightSelector) return _CropDragTarget.right;
 
     final inside =
         localPosition.dx >= left &&
@@ -5992,6 +6158,14 @@ class _GestureCropEditorState extends State<_GestureCropEditor> {
       case _CropDragTarget.bottomRight:
         right = (right + ndx).clamp(left + minSize, 1.0);
         bottom = (bottom + ndy).clamp(top + minSize, 1.0);
+      case _CropDragTarget.top:
+        top = (top + ndy).clamp(0.0, bottom - minSize);
+      case _CropDragTarget.bottom:
+        bottom = (bottom + ndy).clamp(top + minSize, 1.0);
+      case _CropDragTarget.left:
+        left = (left + ndx).clamp(0.0, right - minSize);
+      case _CropDragTarget.right:
+        right = (right + ndx).clamp(left + minSize, 1.0);
     }
 
     return _normalize(Rect.fromLTRB(left, top, right, bottom));
@@ -6076,14 +6250,18 @@ class _CropHandlesOverlay extends StatelessWidget {
           final top = height * safe.top;
           final right = width * (safe.left + safe.width);
           final bottom = height * (safe.top + safe.height);
+          final centerX = (left + right) / 2;
+          final centerY = (top + bottom) / 2;
+          final selectorColor = Colors.orange.shade200;
+          final selectorBorderColor = Colors.orange.shade600;
 
-          Widget handle(double x, double y) {
+          Widget cornerHandle(double x, double y) {
             return Positioned(
-              left: x - 7,
-              top: y - 7,
+              left: x - 12,
+              top: y - 12,
               child: Container(
-                width: 14,
-                height: 14,
+                width: 24,
+                height: 24,
                 decoration: BoxDecoration(
                   color: theme.colorScheme.primary,
                   shape: BoxShape.circle,
@@ -6096,12 +6274,48 @@ class _CropHandlesOverlay extends StatelessWidget {
             );
           }
 
+          Widget horizontalSelector(double x, double y) {
+            return Positioned(
+              left: x - 28,
+              top: y - 8,
+              child: Container(
+                width: 56,
+                height: 16,
+                decoration: BoxDecoration(
+                  color: selectorColor,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: selectorBorderColor, width: 1.6),
+                ),
+              ),
+            );
+          }
+
+          Widget verticalSelector(double x, double y) {
+            return Positioned(
+              left: x - 8,
+              top: y - 28,
+              child: Container(
+                width: 16,
+                height: 56,
+                decoration: BoxDecoration(
+                  color: selectorColor,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: selectorBorderColor, width: 1.6),
+                ),
+              ),
+            );
+          }
+
           return Stack(
             children: [
-              handle(left, top),
-              handle(right, top),
-              handle(left, bottom),
-              handle(right, bottom),
+              cornerHandle(left, top),
+              cornerHandle(right, top),
+              cornerHandle(left, bottom),
+              cornerHandle(right, bottom),
+              horizontalSelector(centerX, top),
+              horizontalSelector(centerX, bottom),
+              verticalSelector(left, centerY),
+              verticalSelector(right, centerY),
             ],
           );
         },

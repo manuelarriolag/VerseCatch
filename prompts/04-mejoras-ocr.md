@@ -20,6 +20,7 @@
 - [x] TG4. Cambia el color principal (MAIN_COLOR) de la animación por algo naranja ya que en fondos blancos no se alcanza a notar el actual.
 - [x] TG5. Modifica el ancho de las cajas de la animación, para que ocupen el 85% del marco generado por el OCR,
 - [x] TG6. Además de las cajas de la animación, agrega  tres opciones de animación que se muestren en forma aleatoria, nunca todas al mismo tiempo, posiblemente partículas grandes y pequeñas pulsantes (como respirando), rayos que atraviezan y las que consideres adecuadas.
+- [ ] TG7. Durante la animación si estoy utilizando una imagen recortada, o que tiene un alto muy pequeño se desborda el overlay que muestra el progreso del OCR. Observa las 
 
 
 ## Notas de alto impacto / riesgo

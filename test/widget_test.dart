@@ -601,6 +601,22 @@ void main() {
       await tester.pump(const Duration(milliseconds: 300));
 
       expect(find.text('Recortar imagen'), findsOneWidget);
+      final applyCropButton = find.byKey(
+        const ValueKey('apply-crop-selection'),
+      );
+      expect(applyCropButton, findsOneWidget);
+      await tester.tap(applyCropButton);
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pump(const Duration(milliseconds: 500));
+
+      expect(find.text('Recortar imagen'), findsNothing);
+      expect(
+        find.byKey(const ValueKey('selected-image-preview')),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.text('Recortar'));
+      await tester.pump(const Duration(milliseconds: 300));
       final dialogContinue = find.descendant(
         of: find.byType(Dialog),
         matching: find.text('Continuar'),

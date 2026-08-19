@@ -51,6 +51,10 @@
 - [x] T2.4. En la pantalla "Recortar imagen" aplica las siguientes mejoras:
   - [x] T2.4.1. Reemplaza los controles de recorte por acciones que puedan realizarze con el mouse o los dedos (gestos).
   - [x] T2.4.2. En dispositivos pequeños como iPhone 17e haz que la imagen previa ocupe todo el espacio disponible, pero sin ocultar los botónes, en cuyo caso, reacomoda los botones cambiando el tamaño y la posición, incluso considera convertir los botones en toolbar o botónes que solo tengan iconos, quiza el único botón que puede mantenerse con menos cambios es el boton "continuar" para no perder consistencia visual.
+  - [x] T2.4.3. Mejora el recuadro que permite hacer la selección del area de recorte. Por ejemplo: solo tiene 4 puntos en las esquinas, hazlos mas grandes esos puntos para que los pueda tomar con el dedo indice o el mouse, agrega selectores sobre las lineas para modificar el alto o el ancho, tambien suficientemente anchos para que los pueda tomar con el dedo indice o el mouse, incluso resalta los selectores con otro color, como verde claro, amarillo claro o naranja claro.
+  - [x] T2.4.4. Agrega un botón "aplicar recorte" para que la imagen se recorte a partir del area seleccionada y que la nueva imagen ya recortada reemplace el espacio de la vista previa.
+  - [x] T2.4.5. Utiliza la nueva imagen recortada como nueva fuente para hacer el OCR, por lo cual se debe reemplazar tambien la imagen previsualizada en el paso previo.
+  - [x] T2.4.6. En el toolbar inferior del diálogo de recorte para pantallas pequeñas, usa controles compactos (iconos) para acciones secundarias y conserva "Continuar" como CTA principal para evitar desbordes y mejorar ergonomía táctil.
 
 ## Paso 3. Revisar texto
 
@@ -128,4 +132,7 @@
 - 2026-08-12 17:09: En Paso 5 se reordenó la cabecera priorizando el alternador de vista en la parte superior (renombrado a "Tarjeta" y "Lista"), se movió el selector de versión bíblica al extremo derecho, se integró el botón de copiar dentro del panel de texto bíblico con tooltip "Copiar texto" y se aplicó un borde fuerte con sombreado al panel para enfatizar su jerarquía visual.
 - 2026-08-12 17:12: En Paso 5 se sustituyó el sombreado externo del panel de texto bíblico por sombreado interno para mantener énfasis de contenedor sin proyectar halo externo, mejorando la limpieza visual del bloque en layouts compactos.
 - 2026-08-19 14:31: Se rediseñó la pantalla "Recortar imagen" para reemplazar sliders por gestos directos (arrastre del área y ajuste por esquinas) y se adaptó el diálogo a pantallas pequeñas priorizando la vista previa en altura sin ocultar acciones, manteniendo "Continuar" como acción principal.
+- 2026-08-19 14:57: En Paso 2 se amplió la interacción de recorte con selectores laterales resaltados (naranja claro) y puntos de esquina más grandes para precisión táctil; además se añadió "Aplicar recorte", que materializa una nueva imagen recortada y la establece como fuente de vista previa/OCR para evitar transformaciones acumuladas.
+- 2026-08-19 15:28: En el diálogo de recorte para iPhone/pantallas estrechas se compactaron acciones secundarias a iconos (cancelar/aplicar) y se mantuvo "Continuar" como acción principal para evitar overflow horizontal durante la instalación/ejecución en dispositivo.
+- 2026-08-19 15:34: Se añadió un fallback nativo de decodificación (UI codec) para "Aplicar recorte" cuando falle la decodificación del paquete image (p.ej., formatos HEIC en iPhone), evitando el error de estado y manteniendo el recorte funcional.
 

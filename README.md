@@ -133,6 +133,14 @@ Si quieres elegir un dispositivo especifico:
 flutter run -d <device_id>
 ```
 
+Si quieres elegir un dispositivo especifico:
+
+```bash
+flutter run -d <device_id> \
+  --dart-define=YOUVERSION_APP_KEY=TU_APP_KEY \
+  --dart-define=YOUVERSION_BIBLE_VERSION_ID=128
+```
+
 ## Compilacion release (sin VSCode/Xcode abiertos)
 
 Compila con `--dart-define` o `--dart-define-from-file` porque estas variables se leen en build time.
