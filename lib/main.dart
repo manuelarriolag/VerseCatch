@@ -13,7 +13,6 @@ import 'package:image/image.dart' as img;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
-import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:versecatch/widgets/ocr_scan_overlay.dart';
 
 enum InputSource { text, image, camera }
@@ -84,10 +83,6 @@ Future<String?> pickImageFileFromDevice() async {
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   _validateMasterBookAliasesOrThrow();
-  if (!kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
-    sqfliteFfiInit();
-    databaseFactory = databaseFactoryFfi;
-  }
   runApp(const VerseCatchApp());
 }
 
