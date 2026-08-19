@@ -93,34 +93,43 @@ class _OcrScanOverlayState extends State<OcrScanOverlay>
               progress: _controller.value,
               state: widget.state,
             );
-            return Stack(
-              key: const ValueKey('ocr-scan-overlay'),
-              fit: StackFit.expand,
-              children: [
-                CustomPaint(
-                  painter: _OcrScanPainter(
-                    progress: _controller.value,
-                    tint: widget.tint,
-                    state: widget.state,
-                    effect: _ambientEffect,
-                  ),
-                ),
-                if (widget.showHud)
-                  Align(
-                    alignment: Alignment.bottomRight,
-                    child: Padding(
-                      padding: const EdgeInsets.all(14),
-                      child: _OcrHud(
+            return LayoutBuilder(
+              builder: (context, constraints) {
+                final hudDensity = _OcrHudDensity.fromSize(
+                  Size(constraints.maxWidth, constraints.maxHeight),
+                );
+
+                return Stack(
+                  key: const ValueKey('ocr-scan-overlay'),
+                  fit: StackFit.expand,
+                  children: [
+                    CustomPaint(
+                      painter: _OcrScanPainter(
+                        progress: _controller.value,
                         tint: widget.tint,
                         state: widget.state,
-                        status: widget.state == OcrOverlayState.failed
-                            ? (widget.errorMessage ?? 'No fue posible reconocer el texto')
-                            : timeline.status,
-                        progress: timeline.progress,
+                        effect: _ambientEffect,
                       ),
                     ),
-                  ),
-              ],
+                    if (widget.showHud && hudDensity.visible)
+                      Align(
+                        alignment: Alignment.bottomRight,
+                        child: Padding(
+                          padding: EdgeInsets.all(hudDensity.edgePadding),
+                          child: _OcrHud(
+                            tint: widget.tint,
+                            state: widget.state,
+                            status: widget.state == OcrOverlayState.failed
+                                ? (widget.errorMessage ?? 'No fue posible reconocer el texto')
+                                : timeline.status,
+                            progress: timeline.progress,
+                            density: hudDensity,
+                          ),
+                        ),
+                      ),
+                  ],
+                );
+              },
             );
           },
         ),
@@ -163,18 +172,133 @@ class _OcrScanOverlayState extends State<OcrScanOverlay>
   }
 }
 
+class _OcrHudDensity {
+  const _OcrHudDensity({
+    required this.visible,
+    required this.showStatus,
+    required this.statusMaxLines,
+    required this.edgePadding,
+    required this.panelWidth,
+    required this.panelHorizontalPadding,
+    required this.panelVerticalPadding,
+    required this.brandIconSize,
+    required this.brandFontSize,
+    required this.statusFontSize,
+    required this.gapAfterBrand,
+    required this.gapAfterStatus,
+    required this.progressHeight,
+  });
+
+  final bool visible;
+  final bool showStatus;
+  final int statusMaxLines;
+  final double edgePadding;
+  final double panelWidth;
+  final double panelHorizontalPadding;
+  final double panelVerticalPadding;
+  final double brandIconSize;
+  final double brandFontSize;
+  final double statusFontSize;
+  final double gapAfterBrand;
+  final double gapAfterStatus;
+  final double progressHeight;
+
+  factory _OcrHudDensity.fromSize(Size size) {
+    if (size.width < 135 || size.height < 46) {
+      return const _OcrHudDensity(
+        visible: false,
+        showStatus: false,
+        statusMaxLines: 0,
+        edgePadding: 0,
+        panelWidth: 0,
+        panelHorizontalPadding: 0,
+        panelVerticalPadding: 0,
+        brandIconSize: 0,
+        brandFontSize: 0,
+        statusFontSize: 0,
+        gapAfterBrand: 0,
+        gapAfterStatus: 0,
+        progressHeight: 0,
+      );
+    }
+
+    final ultraCompact = size.height < 96 || size.width < 188;
+    final compact = !ultraCompact && (size.height < 132 || size.width < 244);
+    final edgePadding = ultraCompact
+        ? 6.0
+        : compact
+        ? 10.0
+        : 14.0;
+    final panelWidth = (size.width - (edgePadding * 2)).clamp(132.0, 220.0).toDouble();
+
+    if (ultraCompact) {
+      return _OcrHudDensity(
+        visible: true,
+        showStatus: false,
+        statusMaxLines: 0,
+        edgePadding: edgePadding,
+        panelWidth: panelWidth,
+        panelHorizontalPadding: 9,
+        panelVerticalPadding: 6,
+        brandIconSize: 8.5,
+        brandFontSize: 10.5,
+        statusFontSize: 0,
+        gapAfterBrand: 5,
+        gapAfterStatus: 0,
+        progressHeight: 3,
+      );
+    }
+
+    if (compact) {
+      return _OcrHudDensity(
+        visible: true,
+        showStatus: true,
+        statusMaxLines: 1,
+        edgePadding: edgePadding,
+        panelWidth: panelWidth,
+        panelHorizontalPadding: 10,
+        panelVerticalPadding: 8,
+        brandIconSize: 9,
+        brandFontSize: 11,
+        statusFontSize: 10,
+        gapAfterBrand: 5,
+        gapAfterStatus: 6,
+        progressHeight: 3.5,
+      );
+    }
+
+    return _OcrHudDensity(
+      visible: true,
+      showStatus: true,
+      statusMaxLines: 2,
+      edgePadding: edgePadding,
+      panelWidth: panelWidth,
+      panelHorizontalPadding: 12,
+      panelVerticalPadding: 10,
+      brandIconSize: 10,
+      brandFontSize: 12,
+      statusFontSize: 11,
+      gapAfterBrand: 7,
+      gapAfterStatus: 8,
+      progressHeight: 4,
+    );
+  }
+}
+
 class _OcrHud extends StatelessWidget {
   const _OcrHud({
     required this.tint,
     required this.state,
     required this.status,
     required this.progress,
+    required this.density,
   });
 
   final Color tint;
   final OcrOverlayState state;
   final String status;
   final double progress;
+  final _OcrHudDensity density;
 
   @override
   Widget build(BuildContext context) {
@@ -183,8 +307,11 @@ class _OcrHud extends StatelessWidget {
       borderRadius: BorderRadius.circular(12),
       child: Container(
         key: const ValueKey('ocr-hud-panel'),
-        width: 220,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        width: density.panelWidth,
+        padding: EdgeInsets.symmetric(
+          horizontal: density.panelHorizontalPadding,
+          vertical: density.panelVerticalPadding,
+        ),
         decoration: BoxDecoration(
           color: Colors.black.withValues(alpha: 0.35),
           borderRadius: BorderRadius.circular(12),
@@ -200,36 +327,38 @@ class _OcrHud extends StatelessWidget {
                   state == OcrOverlayState.failed
                       ? Icons.warning_amber_rounded
                       : Icons.circle,
-                  size: 10,
+                  size: density.brandIconSize,
                   color: barColor,
                 ),
                 const SizedBox(width: 6),
-                const Text(
+                Text(
                   'Verse Catch',
                   style: TextStyle(
                     color: Colors.white,
-                    fontSize: 12,
+                    fontSize: density.brandFontSize,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 7),
-            Text(
-              status,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 11,
-                fontWeight: FontWeight.w500,
+            SizedBox(height: density.gapAfterBrand),
+            if (density.showStatus) ...[
+              Text(
+                status,
+                maxLines: density.statusMaxLines,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: density.statusFontSize,
+                  fontWeight: FontWeight.w500,
+                ),
               ),
-            ),
-            const SizedBox(height: 8),
+              SizedBox(height: density.gapAfterStatus),
+            ],
             ClipRRect(
               borderRadius: BorderRadius.circular(999),
               child: LinearProgressIndicator(
-                minHeight: 4,
+                minHeight: density.progressHeight,
                 value: progress.clamp(0, 1),
                 backgroundColor: Colors.white.withValues(alpha: 0.14),
                 color: barColor,

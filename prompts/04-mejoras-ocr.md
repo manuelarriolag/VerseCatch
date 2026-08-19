@@ -20,7 +20,7 @@
 - [x] TG4. Cambia el color principal (MAIN_COLOR) de la animación por algo naranja ya que en fondos blancos no se alcanza a notar el actual.
 - [x] TG5. Modifica el ancho de las cajas de la animación, para que ocupen el 85% del marco generado por el OCR,
 - [x] TG6. Además de las cajas de la animación, agrega  tres opciones de animación que se muestren en forma aleatoria, nunca todas al mismo tiempo, posiblemente partículas grandes y pequeñas pulsantes (como respirando), rayos que atraviezan y las que consideres adecuadas.
-- [ ] TG7. Durante la animación si estoy utilizando una imagen recortada, o que tiene un alto muy pequeño se desborda el overlay que muestra el progreso del OCR. Observa las 
+- [x] TG7. Durante la animación si estoy utilizando una imagen recortada, o que tiene un alto muy pequeño se desborda el overlay que muestra el progreso del OCR. Se corrigió haciendo el HUD responsivo por tamaño disponible (modo compacto/ultracompacto y ocultación en altura extrema) para evitar overflow.
 
 
 ## Notas de alto impacto / riesgo
@@ -31,3 +31,4 @@
 - 2026-08-12 15:12: Se cambió el MAIN_COLOR por un naranja de mayor contraste para mejorar legibilidad del marco, línea de escaneo y HUD sobre fondos claros sin alterar la estructura de la animación.
 - 2026-08-13 14:47: Las cajas de detección del overlay OCR se normalizaron para ocupar 85% del ancho del marco interno, conservando variación vertical y visibilidad progresiva para mejorar consistencia visual entre imágenes con diferentes proporciones.
 - 2026-08-13 14:47: Se incorporaron tres efectos ambientales exclusivos y aleatorios por sesión de escaneo (partículas pulsantes, rayos de cruce y nodos orbitales), evitando sobrecarga visual por superposición y manteniendo una sola variante activa a la vez.
+- 2026-08-19 16:15: Se hizo responsivo el HUD del overlay OCR para imágenes de baja altura (especialmente recortadas), con densidades adaptativas y ocultación bajo umbral mínimo de espacio para eliminar desbordes verticales sin mover el marco de escaneo.

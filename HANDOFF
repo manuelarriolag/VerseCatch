@@ -42,6 +42,7 @@
 - Se añadió la acción "Aplicar recorte" en el diálogo: genera una nueva imagen recortada, reemplaza la vista previa del paso previo y establece esa imagen como nueva fuente para OCR.
 - En pantallas estrechas (iPhone), la barra inferior del diálogo de recorte ahora usa controles compactos con iconos para acciones secundarias y conserva "Continuar" como CTA visible, evitando desbordes horizontales.
 - Se incorporó fallback de decodificación nativa (UI codec) al aplicar recorte para soportar imágenes que `image.decodeImage` no interpreta (como HEIC en iOS), evitando bloqueos por error de estado.
+- Se corrigió el desborde del HUD de progreso del overlay OCR en imágenes de baja altura: ahora el panel se adapta por densidad (normal/compacto/ultracompacto) y se oculta en altura mínima extrema para evitar `BOTTOM OVERFLOWED`.
 
 ## Decisiones de alto impacto
 - 2026-07-29 00:00: Se decidió mantener el resaltado únicamente en la pantalla de revisión y no durante la edición en vivo para reducir ruido visual y preservar la experiencia de escritura.
@@ -67,3 +68,4 @@
 - 2026-08-19 14:57: Se decidió materializar el recorte como una nueva imagen fuente mediante "Aplicar recorte" (en lugar de solo guardar coordenadas), para que la vista previa y el OCR trabajen sobre el mismo bitmap final y evitar diferencias entre selección visual y procesamiento.
 - 2026-08-19 15:28: Se decidió priorizar estabilidad en device real compactando acciones secundarias del diálogo de recorte a iconos cuando el ancho es limitado, manteniendo "Continuar" textual como ancla de flujo para prevenir overflow de layout.
 - 2026-08-19 15:34: Se decidió incorporar una ruta de decodificación nativa para formatos no soportados por el paquete image durante "Aplicar recorte" (especialmente HEIC en iPhone), priorizando continuidad del flujo sobre dependencia de un solo decodificador.
+- 2026-08-19 16:15: Se decidió hacer adaptativo el HUD del overlay OCR según el espacio visible de la imagen (compactación progresiva y ocultación bajo umbral), para eliminar overflows en recortes de poca altura sin alterar la narrativa visual del barrido OCR.
