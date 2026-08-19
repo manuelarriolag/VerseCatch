@@ -3593,94 +3593,81 @@ class _WizardHomePageState extends State<WizardHomePage> {
               setDialogState(() => draft = normalize(value));
             }
 
-            return AlertDialog(
-              title: const Text('Recortar imagen'),
-              content: SizedBox(
-                width: 480,
-                child: SingleChildScrollView(
+            final media = MediaQuery.of(context);
+            final compactLayout =
+                media.size.width < 420 || media.size.height < 760;
+            final dialogWidth = min(560.0, media.size.width - 20);
+            final dialogHeight = compactLayout
+                ? min(720.0, media.size.height - 28)
+                : min(760.0, media.size.height - 64);
+
+            return Dialog(
+              insetPadding: EdgeInsets.symmetric(
+                horizontal: compactLayout ? 10 : 24,
+                vertical: compactLayout ? 12 : 24,
+              ),
+              child: SizedBox(
+                width: dialogWidth,
+                height: dialogHeight,
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    compactLayout ? 12 : 16,
+                    compactLayout ? 10 : 14,
+                    compactLayout ? 12 : 16,
+                    compactLayout ? 10 : 14,
+                  ),
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      SizedBox(
-                        height: 240,
+                      Text(
+                        'Recortar imagen',
+                        style: Theme.of(context).textTheme.titleLarge,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Arrastra dentro del recuadro para moverlo y usa las esquinas para ajustar el área.',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Expanded(
                         child: ClipRRect(
                           borderRadius: BorderRadius.circular(10),
                           child: _CropSelectionPreview(
                             imagePath: path,
                             cropRect: draft,
+                            onChanged: updateRect,
                           ),
                         ),
                       ),
-                      const SizedBox(height: kWizardPanelSpacing),
-                      Text(
-                        'Horizontal ${((draft.left + (draft.width / 2)) * 100).round()}%',
-                      ),
-                      Slider(
-                        value: draft.left,
-                        min: 0,
-                        max: 1 - draft.width,
-                        onChanged: (v) => updateRect(
-                          Rect.fromLTWH(
-                            v,
-                            draft.top,
-                            draft.width,
-                            draft.height,
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          IconButton.filledTonal(
+                            onPressed: () =>
+                                updateRect(const Rect.fromLTWH(0, 0, 1, 1)),
+                            tooltip: 'Restablecer recorte',
+                            icon: const Icon(Icons.refresh_rounded),
                           ),
-                        ),
-                      ),
-                      Text(
-                        'Vertical ${((draft.top + (draft.height / 2)) * 100).round()}%',
-                      ),
-                      Slider(
-                        value: draft.top,
-                        min: 0,
-                        max: 1 - draft.height,
-                        onChanged: (v) => updateRect(
-                          Rect.fromLTWH(
-                            draft.left,
-                            v,
-                            draft.width,
-                            draft.height,
+                          const Spacer(),
+                          TextButton(
+                            onPressed: () => Navigator.of(dialogContext).pop(),
+                            child: const Text('Cancelar'),
                           ),
-                        ),
-                      ),
-                      Text('Ancho ${(draft.width * 100).round()}%'),
-                      Slider(
-                        value: draft.width,
-                        min: 0.12,
-                        max: 1,
-                        onChanged: (v) => updateRect(
-                          Rect.fromLTWH(draft.left, draft.top, v, draft.height),
-                        ),
-                      ),
-                      Text('Alto ${(draft.height * 100).round()}%'),
-                      Slider(
-                        value: draft.height,
-                        min: 0.12,
-                        max: 1,
-                        onChanged: (v) => updateRect(
-                          Rect.fromLTWH(draft.left, draft.top, draft.width, v),
-                        ),
+                          const SizedBox(width: 8),
+                          FilledButton.icon(
+                            onPressed: () =>
+                                Navigator.of(dialogContext).pop(draft),
+                            icon: const Icon(Icons.check),
+                            label: const Text('Continuar'),
+                          ),
+                        ],
                       ),
                     ],
                   ),
                 ),
               ),
-              actions: [
-                TextButton(
-                  onPressed: () => updateRect(const Rect.fromLTWH(0, 0, 1, 1)),
-                  child: const Text('Restablecer'),
-                ),
-                TextButton(
-                  onPressed: () => Navigator.of(dialogContext).pop(),
-                  child: const Text('Cancelar'),
-                ),
-                FilledButton(
-                  onPressed: () => Navigator.of(dialogContext).pop(draft),
-                  child: const Text('Aplicar'),
-                ),
-              ],
             );
           },
         );
@@ -5868,19 +5855,257 @@ class _CropSelectionPreview extends StatelessWidget {
   const _CropSelectionPreview({
     required this.imagePath,
     required this.cropRect,
+    required this.onChanged,
   });
 
   final String imagePath;
   final Rect cropRect;
+  final ValueChanged<Rect> onChanged;
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        Image.file(File(imagePath), fit: BoxFit.cover),
-        _CropOverlayMask(cropRect: cropRect),
-      ],
+    return _GestureCropEditor(
+      imagePath: imagePath,
+      cropRect: cropRect,
+      onChanged: onChanged,
+    );
+  }
+}
+
+enum _CropDragTarget { move, topLeft, topRight, bottomLeft, bottomRight }
+
+class _GestureCropEditor extends StatefulWidget {
+  const _GestureCropEditor({
+    required this.imagePath,
+    required this.cropRect,
+    required this.onChanged,
+  });
+
+  final String imagePath;
+  final Rect cropRect;
+  final ValueChanged<Rect> onChanged;
+
+  @override
+  State<_GestureCropEditor> createState() => _GestureCropEditorState();
+}
+
+class _GestureCropEditorState extends State<_GestureCropEditor> {
+  Size? _sourceSize;
+  _CropDragTarget? _dragTarget;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSourceSize();
+  }
+
+  @override
+  void didUpdateWidget(covariant _GestureCropEditor oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.imagePath != widget.imagePath) {
+      _sourceSize = null;
+      _loadSourceSize();
+    }
+  }
+
+  Future<void> _loadSourceSize() async {
+    try {
+      final bytes = await File(widget.imagePath).readAsBytes();
+      final decoded = img.decodeImage(bytes);
+      if (!mounted || decoded == null) return;
+      setState(() {
+        _sourceSize = Size(decoded.width.toDouble(), decoded.height.toDouble());
+      });
+    } catch (_) {
+      if (!mounted) return;
+      // Fallback ratio keeps the crop editor usable when metadata cannot be read.
+      setState(() => _sourceSize = const Size(4, 3));
+    }
+  }
+
+  Rect _normalize(Rect value) {
+    const minSize = 0.12;
+    final width = value.width.clamp(minSize, 1.0);
+    final height = value.height.clamp(minSize, 1.0);
+    final left = value.left.clamp(0.0, 1.0 - width);
+    final top = value.top.clamp(0.0, 1.0 - height);
+    return Rect.fromLTWH(left, top, width, height);
+  }
+
+  _CropDragTarget? _resolveTarget(Offset localPosition, Size size) {
+    final safe = _normalize(widget.cropRect);
+    final left = safe.left * size.width;
+    final top = safe.top * size.height;
+    final right = (safe.left + safe.width) * size.width;
+    final bottom = (safe.top + safe.height) * size.height;
+    const handleRadius = 22.0;
+
+    bool near(Offset anchor) =>
+        (localPosition - anchor).distance <= handleRadius;
+
+    if (near(Offset(left, top))) return _CropDragTarget.topLeft;
+    if (near(Offset(right, top))) return _CropDragTarget.topRight;
+    if (near(Offset(left, bottom))) return _CropDragTarget.bottomLeft;
+    if (near(Offset(right, bottom))) return _CropDragTarget.bottomRight;
+
+    final inside =
+        localPosition.dx >= left &&
+        localPosition.dx <= right &&
+        localPosition.dy >= top &&
+        localPosition.dy <= bottom;
+    if (inside) return _CropDragTarget.move;
+    return null;
+  }
+
+  Rect _applyDelta(
+    Rect current,
+    Offset delta,
+    Size size,
+    _CropDragTarget target,
+  ) {
+    const minSize = 0.12;
+    final ndx = delta.dx / size.width;
+    final ndy = delta.dy / size.height;
+
+    double left = current.left;
+    double top = current.top;
+    double right = current.right;
+    double bottom = current.bottom;
+
+    switch (target) {
+      case _CropDragTarget.move:
+        final width = current.width;
+        final height = current.height;
+        left = (left + ndx).clamp(0.0, 1.0 - width);
+        top = (top + ndy).clamp(0.0, 1.0 - height);
+        right = left + width;
+        bottom = top + height;
+      case _CropDragTarget.topLeft:
+        left = (left + ndx).clamp(0.0, right - minSize);
+        top = (top + ndy).clamp(0.0, bottom - minSize);
+      case _CropDragTarget.topRight:
+        right = (right + ndx).clamp(left + minSize, 1.0);
+        top = (top + ndy).clamp(0.0, bottom - minSize);
+      case _CropDragTarget.bottomLeft:
+        left = (left + ndx).clamp(0.0, right - minSize);
+        bottom = (bottom + ndy).clamp(top + minSize, 1.0);
+      case _CropDragTarget.bottomRight:
+        right = (right + ndx).clamp(left + minSize, 1.0);
+        bottom = (bottom + ndy).clamp(top + minSize, 1.0);
+    }
+
+    return _normalize(Rect.fromLTRB(left, top, right, bottom));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final imageSize = _sourceSize;
+    if (imageSize == null) {
+      return Container(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        child: const Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    return Container(
+      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+      child: Center(
+        child: AspectRatio(
+          aspectRatio: imageSize.width / imageSize.height,
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final size = Size(constraints.maxWidth, constraints.maxHeight);
+              return GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onPanStart: (details) {
+                  setState(() {
+                    _dragTarget = _resolveTarget(details.localPosition, size);
+                  });
+                },
+                onPanUpdate: (details) {
+                  final target = _dragTarget;
+                  if (target == null) return;
+                  final next = _applyDelta(
+                    widget.cropRect,
+                    details.delta,
+                    size,
+                    target,
+                  );
+                  widget.onChanged(next);
+                },
+                onPanEnd: (_) => setState(() => _dragTarget = null),
+                onPanCancel: () => setState(() => _dragTarget = null),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    Image.file(File(widget.imagePath), fit: BoxFit.fill),
+                    _CropOverlayMask(cropRect: widget.cropRect),
+                    _CropHandlesOverlay(cropRect: widget.cropRect),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CropHandlesOverlay extends StatelessWidget {
+  const _CropHandlesOverlay({required this.cropRect});
+
+  final Rect cropRect;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final safe = Rect.fromLTWH(
+      cropRect.left.clamp(0.0, 1.0),
+      cropRect.top.clamp(0.0, 1.0),
+      cropRect.width.clamp(0.12, 1.0),
+      cropRect.height.clamp(0.12, 1.0),
+    );
+
+    return IgnorePointer(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final width = constraints.maxWidth;
+          final height = constraints.maxHeight;
+          final left = width * safe.left;
+          final top = height * safe.top;
+          final right = width * (safe.left + safe.width);
+          final bottom = height * (safe.top + safe.height);
+
+          Widget handle(double x, double y) {
+            return Positioned(
+              left: x - 7,
+              top: y - 7,
+              child: Container(
+                width: 14,
+                height: 14,
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primary,
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: theme.colorScheme.surface,
+                    width: 2,
+                  ),
+                ),
+              ),
+            );
+          }
+
+          return Stack(
+            children: [
+              handle(left, top),
+              handle(right, top),
+              handle(left, bottom),
+              handle(right, bottom),
+            ],
+          );
+        },
+      ),
     );
   }
 }

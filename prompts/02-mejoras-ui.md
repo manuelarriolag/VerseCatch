@@ -48,6 +48,10 @@
 
 - [x] T2.3. Agrega una opción "Recortar" (crop) previa al OCR con una interfaz simple de selección rectangular, útil para ignorar ruido fuera del texto principal.
 
+- [x] T2.4. En la pantalla "Recortar imagen" aplica las siguientes mejoras:
+  - [x] T2.4.1. Reemplaza los controles de recorte por acciones que puedan realizarze con el mouse o los dedos (gestos).
+  - [x] T2.4.2. En dispositivos pequeños como iPhone 17e haz que la imagen previa ocupe todo el espacio disponible, pero sin ocultar los botónes, en cuyo caso, reacomoda los botones cambiando el tamaño y la posición, incluso considera convertir los botones en toolbar o botónes que solo tengan iconos, quiza el único botón que puede mantenerse con menos cambios es el boton "continuar" para no perder consistencia visual.
+
 ## Paso 3. Revisar texto
 
 - [x] T3.1. Quiero que el texto reconocido por el OCR (o el que haya pegado o escrito el usuario), muestre resaltadas en color magenta las citas bìblicas encontradas, pero este paso 3 no sustituye al paso 4, solo es un previo que ayudará al usuario a identificar visualmente las citas y si detecta alguna no resaltada que pueda ajustarla.
@@ -123,4 +127,5 @@
 - 2026-08-12 16:26: En Paso 5 se estableció la vista compacta como predeterminada, agregando prefijo de índice por cita en formato "(n de N)"; además se desactivó el icono de selección del segmentado para no alterar el icono activo y se refinó el contorno de chips inferiores con forma y densidad consistente.
 - 2026-08-12 17:09: En Paso 5 se reordenó la cabecera priorizando el alternador de vista en la parte superior (renombrado a "Tarjeta" y "Lista"), se movió el selector de versión bíblica al extremo derecho, se integró el botón de copiar dentro del panel de texto bíblico con tooltip "Copiar texto" y se aplicó un borde fuerte con sombreado al panel para enfatizar su jerarquía visual.
 - 2026-08-12 17:12: En Paso 5 se sustituyó el sombreado externo del panel de texto bíblico por sombreado interno para mantener énfasis de contenedor sin proyectar halo externo, mejorando la limpieza visual del bloque en layouts compactos.
+- 2026-08-19 14:31: Se rediseñó la pantalla "Recortar imagen" para reemplazar sliders por gestos directos (arrastre del área y ajuste por esquinas) y se adaptó el diálogo a pantallas pequeñas priorizando la vista previa en altura sin ocultar acciones, manteniendo "Continuar" como acción principal.
 

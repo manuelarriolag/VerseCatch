@@ -36,6 +36,8 @@
 - Paso 6 ahora persiste historial de últimas 5 exportaciones (fecha/hora, formato y ruta) y permite reintentar exportación desde cada entrada.
 - En la animación OCR, las cajas de detección ahora ocupan el 85% del ancho del marco interno para que la lectura visual sea más uniforme dentro del área de escaneo.
 - La animación OCR ahora selecciona aleatoriamente una sola variante ambiental por sesión (partículas pulsantes, rayos de cruce o nodos orbitales), evitando mostrar múltiples efectos simultáneamente.
+- La pantalla "Recortar imagen" del paso 2 fue migrada de controles por sliders a recorte por gestos (arrastre del área y ajuste por esquinas), con feedback visual de manejadores para mouse/touch.
+- El diálogo de recorte ahora usa layout responsivo en móvil pequeño: la vista previa ocupa el máximo alto disponible y las acciones se reacomodan en una barra inferior, manteniendo "Continuar" como acción principal.
 
 ## Decisiones de alto impacto
 - 2026-07-29 00:00: Se decidió mantener el resaltado únicamente en la pantalla de revisión y no durante la edición en vivo para reducir ruido visual y preservar la experiencia de escritura.
@@ -57,3 +59,4 @@
 - 2026-08-12 17:12: Se reemplazó la sombra externa por sombra interna en el panel bíblico del Paso 5 para mantener contraste del contenedor sin expandir ruido visual fuera del marco.
 - 2026-08-13 14:47: Se normalizó el ancho de cajas del overlay OCR al 85% del marco para reforzar consistencia de lectura en el barrido, sin alterar la secuencia funcional del reconocimiento.
 - 2026-08-13 14:47: Se introdujo variación visual aleatoria con tres estilos exclusivos de efecto ambiental por corrida de OCR, mitigando monotonía sin incrementar densidad visual por solapamiento de capas.
+- 2026-08-19 14:31: Se reemplazaron los controles de recorte por interacción gestual directa en Paso 2 y se rediseñó el diálogo para pantallas pequeñas maximizando la previsualización sin ocultar botones, manteniendo "Continuar" como CTA principal.
