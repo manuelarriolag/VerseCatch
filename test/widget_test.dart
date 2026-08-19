@@ -25,6 +25,14 @@ Future<void> _enterTextAndAdvance(WidgetTester tester, String text) async {
   await tester.pumpAndSettle();
 }
 
+Future<void> _goToExploreStep(WidgetTester tester, {String? text}) async {
+  await _enterTextAndAdvance(tester, text ?? 'John 3:16 and Romans 8:28');
+  await tester.tap(find.text('Continuar'));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('Continuar'));
+  await tester.pumpAndSettle();
+}
+
 void main() {
   testWidgets('shows the VerseCatch home screen', (WidgetTester tester) async {
     tester.view.physicalSize = const Size(1080, 2400);
@@ -210,6 +218,96 @@ void main() {
     },
   );
 
+  testWidgets('shows OCR overlay immediately and keeps it for at least 6 seconds', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      VerseCatchApp(
+        bibleTextLookup: _fakeBibleLookup,
+        imageFilePicker: () async => 'assets/images/banner_demo.png',
+        ocrTextRecognizer: (imagePath) async {
+          await Future<void>.delayed(const Duration(seconds: 2));
+          return 'John 3:16';
+        },
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Elegir una imagen'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('empty-image-picker')));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('continue-selected-image')));
+    await tester.pump();
+
+    expect(find.byKey(const ValueKey('ocr-scan-overlay')), findsOneWidget);
+    expect(find.byKey(const ValueKey('selected-image-preview')), findsOneWidget);
+    expect(find.byKey(const ValueKey('ocr-hud-panel')), findsOneWidget);
+    expect(find.text('Revisar el texto reconocido'), findsNothing);
+
+    await tester.pump(const Duration(seconds: 5));
+    expect(find.byKey(const ValueKey('ocr-scan-overlay')), findsOneWidget);
+    expect(find.text('Revisar el texto reconocido'), findsNothing);
+
+    await tester.pump(const Duration(milliseconds: 1200));
+    expect(find.byKey(const ValueKey('ocr-scan-overlay')), findsOneWidget);
+    expect(find.text('Revisar el texto reconocido'), findsNothing);
+
+    await tester.pump(const Duration(milliseconds: 800));
+    expect(find.byKey(const ValueKey('ocr-scan-overlay')), findsOneWidget);
+
+    await tester.pump(const Duration(seconds: 8));
+  });
+
+  testWidgets('keeps scanning overlay active when OCR runs longer than 6 seconds', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      VerseCatchApp(
+        bibleTextLookup: _fakeBibleLookup,
+        imageFilePicker: () async => 'assets/images/banner_demo.png',
+        ocrTextRecognizer: (imagePath) async {
+          await Future<void>.delayed(const Duration(seconds: 8));
+          return 'John 3:16';
+        },
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Elegir una imagen'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('empty-image-picker')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('continue-selected-image')));
+    await tester.pump();
+
+    await tester.pump(const Duration(seconds: 6));
+    expect(find.byKey(const ValueKey('ocr-scan-overlay')), findsOneWidget);
+    expect(find.byKey(const ValueKey('selected-image-preview')), findsOneWidget);
+    expect(find.byKey(const ValueKey('ocr-hud-panel')), findsOneWidget);
+    expect(find.text('Revisar el texto reconocido'), findsNothing);
+
+    await tester.pump(const Duration(milliseconds: 2100));
+    expect(find.byKey(const ValueKey('ocr-scan-overlay')), findsOneWidget);
+    expect(find.text('Revisar el texto reconocido'), findsNothing);
+
+    await tester.pump(const Duration(milliseconds: 900));
+    expect(find.byKey(const ValueKey('ocr-scan-overlay')), findsOneWidget);
+
+    await tester.pump(const Duration(seconds: 8));
+  });
+
   testWidgets('moves to review step after entering text', (
     WidgetTester tester,
   ) async {
@@ -246,7 +344,7 @@ void main() {
     await tester.tap(find.text('Continuar'));
     await tester.pumpAndSettle();
 
-    expect(find.byTooltip('Copiar versículo'), findsOneWidget);
+    expect(find.byTooltip('Copiar texto'), findsOneWidget);
     await tester.tap(find.text('Finalizar'));
     await tester.pumpAndSettle();
 
@@ -293,7 +391,7 @@ void main() {
     await tester.tap(find.text('Continuar'));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('Copiar versículo'));
+    await tester.tap(find.byTooltip('Copiar texto'));
     await tester.pumpAndSettle();
 
     expect(copiedText, isNotNull);
@@ -411,6 +509,211 @@ void main() {
     await tester.tap(find.text('Nuevo escaneo'));
     await tester.pumpAndSettle();
     expect(find.text('¿Cómo quieres comenzar?'), findsOneWidget);
+  });
+
+  testWidgets('highlights the active quick-navigation citation in review preview', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(VerseCatchApp(bibleTextLookup: _fakeBibleLookup));
+    await tester.pumpAndSettle();
+
+    await _enterTextAndAdvance(tester, 'John 3:16 and Romans 8:28');
+
+    TextSpan readSpanTree() {
+      final rich = tester.widget<SelectableText>(
+        find.byType(SelectableText).first,
+      );
+      return rich.textSpan!;
+    }
+
+    ({Color? first, Color? second}) readReferenceBackgrounds(TextSpan root) {
+      final children = root.children?.whereType<TextSpan>().toList() ?? const [];
+      Color? first;
+      Color? second;
+      for (final child in children) {
+        final segment = child.text ?? '';
+        if (segment.contains('John 3:16')) {
+          first = child.style?.backgroundColor;
+        }
+        if (segment.contains('Romans 8:28')) {
+          second = child.style?.backgroundColor;
+        }
+      }
+      return (first: first, second: second);
+    }
+
+    final initial = readReferenceBackgrounds(readSpanTree());
+    expect(initial.first, isNotNull);
+    expect(initial.second, isNotNull);
+    expect(initial.first, isNot(equals(initial.second)));
+
+    await tester.tap(find.byTooltip('Siguiente cita'));
+    await tester.pumpAndSettle();
+
+    final afterNext = readReferenceBackgrounds(readSpanTree());
+    expect(afterNext.first, isNotNull);
+    expect(afterNext.second, isNotNull);
+    expect(afterNext.first, isNot(equals(afterNext.second)));
+    expect(afterNext.first, equals(initial.second));
+    expect(afterNext.second, equals(initial.first));
+  });
+
+  testWidgets('shows rotate and crop controls for selected image and opens crop dialog', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      VerseCatchApp(
+        bibleTextLookup: _fakeBibleLookup,
+        imageFilePicker: () async => 'assets/images/banner_demo.png',
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Elegir una imagen'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('empty-image-picker')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Rotar'), findsOneWidget);
+    expect(find.text('Recortar'), findsOneWidget);
+
+    await tester.tap(find.text('Recortar'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Recortar imagen'), findsOneWidget);
+    expect(find.text('Aplicar'), findsOneWidget);
+    await tester.tap(find.text('Aplicar'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Recortar imagen'), findsNothing);
+  });
+
+  testWidgets('toggles explore mode between one-citation and compact views', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(700, 1200);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(VerseCatchApp(bibleTextLookup: _fakeBibleLookup));
+    await tester.pumpAndSettle();
+
+    await _goToExploreStep(tester);
+
+    expect(find.text('Tarjeta'), findsOneWidget);
+    expect(find.text('Lista'), findsOneWidget);
+    expect(find.byType(FilterChip), findsNothing);
+    expect(find.byType(ListTile), findsWidgets);
+    expect(find.textContaining('(1 de 2)'), findsOneWidget);
+
+    final segmented = find.byType(SegmentedButton<bool>);
+    expect(segmented, findsOneWidget);
+    expect(
+      find.descendant(of: segmented, matching: find.byIcon(Icons.check)),
+      findsNothing,
+    );
+
+    await tester.tap(find.text('Tarjeta'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(FilterChip), findsWidgets);
+    final firstChip = tester.widget<FilterChip>(find.byType(FilterChip).first);
+    expect(firstChip.showCheckmark, isFalse);
+    expect(firstChip.shape, isA<RoundedRectangleBorder>());
+
+    await tester.tap(find.text('Lista'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(FilterChip), findsNothing);
+    expect(find.byType(ListTile), findsWidgets);
+  });
+
+  testWidgets('keeps active explore chip fully visible when navigating', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(700, 1200);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(VerseCatchApp(bibleTextLookup: _fakeBibleLookup));
+    await tester.pumpAndSettle();
+
+    final refsText = List.generate(
+      12,
+      (index) => 'John 3:${16 + index}',
+    ).join(' ');
+    await _goToExploreStep(tester, text: refsText);
+
+    await tester.tap(find.text('Tarjeta'));
+    await tester.pumpAndSettle();
+
+    final listFinder = find.byWidgetPredicate(
+      (widget) => widget is ListView && widget.scrollDirection == Axis.horizontal,
+    );
+    expect(listFinder, findsOneWidget);
+    final listRect = tester.getRect(listFinder);
+
+    void assertChipFullyVisible(String label) {
+      final chipLabelFinder = find.text(label).last;
+      final chipRect = tester.getRect(chipLabelFinder);
+      expect(chipRect.left, greaterThanOrEqualTo(listRect.left - 2));
+      expect(chipRect.right, lessThanOrEqualTo(listRect.right + 2));
+    }
+
+    assertChipFullyVisible('John 3:16');
+
+    for (var i = 0; i < 8; i++) {
+      await tester.tap(find.byIcon(Icons.chevron_right));
+      await tester.pumpAndSettle();
+    }
+    assertChipFullyVisible('John 3:24');
+
+    for (var i = 0; i < 5; i++) {
+      await tester.tap(find.byIcon(Icons.chevron_left));
+      await tester.pumpAndSettle();
+    }
+    assertChipFullyVisible('John 3:19');
+  });
+
+  testWidgets('shows and toggles reduce-motion preference in finish step', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(VerseCatchApp(bibleTextLookup: _fakeBibleLookup));
+    await tester.pumpAndSettle();
+
+    await _goToExploreStep(tester);
+    await tester.tap(find.text('Finalizar'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Reducir animaciones'), findsOneWidget);
+    final switchTile = find.widgetWithText(SwitchListTile, 'Reducir animaciones');
+    expect(switchTile, findsOneWidget);
+
+    SwitchListTile tile = tester.widget<SwitchListTile>(switchTile);
+    final before = tile.value;
+
+    await tester.tap(find.text('Reducir animaciones'));
+    await tester.pumpAndSettle();
+
+    tile = tester.widget<SwitchListTile>(switchTile);
+    expect(tile.value, isNot(equals(before)));
   });
 
   test('extractVerseReferences finds scripture references', () {

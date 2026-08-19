@@ -9,7 +9,7 @@
 - M4. Este prompt no está terminado, lo estaré ampliando con nuevas tareas (status pending) y tu ejecutarás solamente las tareas pendientes. Tambien es posible que agregue nuevas instrucciones.
 - M5. Genera un archivo HANDOFF que pueda ser leido por otros agentes IA y alli ve colocando también lo mencionado en M2.
 - M6. Considera que pueden existir subtareas, las cuales heredan el ID de la tarea antecesora, estan más indentadas y agregan nueva numeración basada en dígitos o letras. Por lo cual una tarea solamente se marca en done cuando todas sus subtareas ya estan en done.
-- M0. En relación con M0, asegúrate que la numeración de los IDs (prefijos) se congruente, ya que no solo es un tema de secuencia, pues podría implicar una lógica de implementación incorrecta, además que define la prioridad y el orden que debe respetarse obligatoriamente. Si hay incongruencia, desorden o duplicados detente para que yo lo arregle.
+- M7. En relación con M0, asegúrate que la numeración de los IDs (prefijos) se congruente, ya que no solo es un tema de secuencia, pues podría implicar una lógica de implementación incorrecta, además que define la prioridad y el orden que debe respetarse obligatoriamente. Si hay incongruencia, desorden o duplicados detente para que yo lo arregle.
 
 ## Mejoras en general
 
@@ -31,12 +31,22 @@
 
 - [x] TG4. Cambia el icono del botón "Nuevo escaneo" por uno que parezca "reset" o "ir al inicio", se me ocurre algo parecido a esto "|<-".
 
+- [x] TG5. Estandariza los espaciados verticales entre títulos, subtítulos, botones y paneles para que en móvil y escritorio mantengan ritmo visual consistente sin saltos bruscos entre pasos.
+
+- [x] TG6. Mejora la accesibilidad visual global de la UI aplicando contraste mínimo AA en textos, botones y chips; incluye estados hover/focus/disabled claramente distinguibles.
+
+- [x] TG7. Agrega una preferencia "Reducir animaciones" para desactivar animaciones no críticas, y haz que esta preferencia persista entre sesiones.
+  
 ## Paso 2. Obtener texto
 
 - [x] T2.1. Si en el paso previo se eligió la opción "Elegir una imagen", se muestra la pantalla "Selecciona una imagen", aplica los siguientes cambios:
   - [x] T2.1.1. Si el usuario hace click/tap sobre el marco que tiene el texto "Sin imagen" que se ejecute la misma acción del botón "Elegir imagen".
   - [x] T2.1.2. Cuando ya se eligió una imagen, se reemplaza el marco que antes decia "Sin imagen" por la imagen selecionada, esto es correcto, ahora debemos mostrar la imágen completa con funciones para hacer zoom y mover la imagen que permitan visualizarla.
   - [x] T2.1.3. Como se describe en T2.1.2, hace falta un botón para continuar, ya que si el usuario llega a esta pantalla usando el botón "Atrás" ya no hay forma de continuar.
+
+- [x] T2.2. Agrega un botón "Rotar" para girar la imagen seleccionada en incrementos de 90° (0°, 90°, 180°, 270°), y que el OCR use la orientación final elegida por el usuario.
+
+- [x] T2.3. Agrega una opción "Recortar" (crop) previa al OCR con una interfaz simple de selección rectangular, útil para ignorar ruido fuera del texto principal.
 
 ## Paso 3. Revisar texto
 
@@ -51,10 +61,29 @@
   - [x] T3.6.1. No deben mostrarse al mismo tiempo la vista previa y el cuadro de texto para editar, de esta forma deberán separarse claramente el modo vista previa del modo editar. Por defecto, al ingresar a este paso se debe mostrar el modo vista previa.
   - [x] T3.6.2. El botón actual "vista previa" debe intercambiarse por "editar", acorde con el modo que este activado y una vez presionado debe hacer el toogle del modo e intercambiar el título del botón. Por ejemplo el botón debe decir "Vista Previa" si el modo activo es editar, y debe decir "Editar" si el modo activo es vista previa.
 
+- [x] T3.7. Agrega un mini panel de ayuda en modo edición (colapsable) con ejemplos de formatos válidos de citas bíblicas para reducir errores de escritura.
+
+- [x] T3.8. En modo vista previa, agrega navegación rápida entre citas detectadas (anterior/siguiente) y haz que cada salto haga scroll automático al fragmento correspondiente.
+- [x] T3.9. En relación con T3.8, cuando ocurra el scroll tambien haz que la cita activa en la navegación rápida se resalte en un color distinto a las otras citas bíblicas (consistente con el tema activo).
+
 ## Paso 5. Explorar citas
 - [x] T5.1. Alinear a la derecha el botón copy.
 - [x] T5.2. El cuado de texto donde se muestran las citas debe expandirse para ocupar todo el alto y ancho disponible (dock) sin margen y bordes.
 - [x] T5.3. Hay una barra de navegación en la parte inferior, en dispositivos pequeños se muestra el texto en multiples líneas imposible de leer, dale un ancho mínimo suficiente para mostrar 2 dígitos por cada elemento, por ejemplo: "{nn} de {NN}".
+- [x] T5.4. Cuando se navega usando el avanzar y retroceder haz que el chip activo de la parte inferior haga scroll horizontal para que se pueda visualizar, ya que cuando estan oculto el chip activo no se muestra.
+- [x] T5.5. Al hacer click/tap sobre un chip inferior, desplaza automáticamente el carrusel y enfoca la cita seleccionada; además, resalta visualmente el chip activo con mayor contraste.
+- [x] T5.6. Agrega una opción para alternar entre vista "Una cita por pantalla" y "Lista compacta", manteniendo el índice de cita activa al cambiar de modo.
+- [x] T5.7. No funciona correctamente T5.4, el scroll si ocurre pero el chip no se muestra completamente, a veces parcialmente y a veces nada.
+- [x] T5.8. En relación con T5.6, agrega en la lista compacta el indice de la cita como prefijo, por ejemplo: (4 de 11) {{CITA}}
+- [x] T5.9. La vista por defecto debe ser lista compacta.
+- [x] T5.10. No cambies el el icono de la vista activa, con el resaltado es suficiente.
+- [x] T5.11. Mejora el borde de los chips inferiores ya que el redondeado se ve irregular.
+- [x] T6. Aplica los siguientes cambios a la UI del paso 5 Explorar citas. Apoyate en el archivo "prompts/cambios al paso 5 - explorar citas.png" como una guí visual.
+  - [x] T6.1. Mover el alternador de vista  hacia arriba y cambiar el texto.
+  - [x] T6.2. Mover a la derecha el selector de version bíblica.
+  - [x] T6.3. Coloca el botón copiar adentro del panel visualizar texto bíblico, y cambia el tooltip del botón por "Copiar texto".
+  - [x] T6.4. Coloca un borde fuerte con efecto de sombreado al rededor del panel visualizar texto bíblico
+  - [x] T6.4b. Cambia el sombreado actual por un sombreado interno.
 
 ## Paso 6. Guardar
 - [x] T6.1. Agrega un checkbox que permita incluir el texto bíblico de todas las citas encontradas, el valor de este checkbox debe persistirse entre sesiones.
@@ -73,6 +102,12 @@
 - [x] T6.6 Modifica el proceso de 'copiar resultado escaneado' para que solamente incluya el texto escaneado y el texto bìblico si la opción incluir texto esta seleccionada, actualiza el texto descriptivo de esta acción. NOTA: Este proceso no esta funcionando actualmente, no copia nada al portapapeles.
 - [x] T6.7. Acorde con T6.3.5 y T6.3.6, agrega mas detalles que permita ver si esta avanzando o no el proceso de obtención del texto bíblico, por ejemplo: "(1 de 8)" o lo que mejor convenga. Añade un icono cancelar, para que el usuario pueda interrumpir. Por último, despliega el tiempo que se llevó (en minutos o segundos) el proceso completo por debajo del icono done.
 
+- [x] T6.8. Agrega una vista previa del contenido final antes de exportar/copiar/compartir, con pestañas para "Texto escaneado", "Citas detectadas" y "Resultado final".
+
+- [x] T6.9. Agrega validaciones previas al exportar (nombre vacío, caracteres inválidos, carpeta inaccesible) con mensajes claros y acción de corrección directa.
+
+- [x] T6.10. Agrega un historial de las últimas 5 exportaciones (fecha/hora, formato y ruta destino) para facilitar reintentos rápidos.
+
 
 ## Notas de alto impacto / riesgo
 - 2026-07-29 00:00: Se decidió mantener el resaltado únicamente en la vista previa del paso 3 y no durante la edición en vivo para evitar interferir con la escritura.
@@ -80,4 +115,12 @@
 - 2026-08-08 20:13: Se decidió permitir navegación directa a cualquiera de los seis pasos desde los indicadores de móvil y escritorio, conservando el contenido y estado capturados; al entrar en Explorar citas se recarga el texto bíblico cuando existe una cita activa.
 - 2026-08-08 20:22: Se restringió la navegación directa del header a los pasos ya concluidos mediante el flujo normal; esta regla sustituye la navegación irrestricta registrada a las 20:13 y evita omitir pasos futuros. "Nuevo escaneo" limpia también el registro de pasos concluidos.
 - 2026-08-09 11:16: Se separó la selección de imagen del procesamiento OCR: elegir o cambiar una imagen conserva al usuario en el paso 2 para previsualizarla con zoom y desplazamiento, y el OCR solo inicia al presionar "Continuar".
+- 2026-08-12 15:40: Se incorporó una preferencia persistente de "Reducir animaciones" que fuerza duraciones cero en transiciones no críticas de OCR/detección y feedback visual, priorizando accesibilidad en usuarios sensibles al movimiento.
+- 2026-08-12 15:40: Se decidió ejecutar el OCR sobre la orientación y recorte definidos por el usuario en Paso 2 (rotación 90° y crop normalizado), para reducir ruido y mejorar precisión antes del reconocimiento.
+- 2026-08-12 15:40: Se incorporó una vista previa obligatoria por pestañas para copiar/exportar (texto escaneado, citas detectadas y resultado final), con validaciones proactivas de exportación e historial de últimas 5 exportaciones con reintento rápido.
+- 2026-08-12 16:09: En Paso 3 se distinguió visualmente la cita activa durante la navegación rápida usando colores del tema activo (primaryContainer/onPrimaryContainer), manteniendo un estilo secundario para las demás coincidencias.
+- 2026-08-12 16:16: Se reemplazó el cálculo aproximado de scroll horizontal de chips en Paso 5 por un ajuste basado en medición real de render (keys + RenderBox), garantizando que el chip activo quede completamente visible dentro del viewport.
+- 2026-08-12 16:26: En Paso 5 se estableció la vista compacta como predeterminada, agregando prefijo de índice por cita en formato "(n de N)"; además se desactivó el icono de selección del segmentado para no alterar el icono activo y se refinó el contorno de chips inferiores con forma y densidad consistente.
+- 2026-08-12 17:09: En Paso 5 se reordenó la cabecera priorizando el alternador de vista en la parte superior (renombrado a "Tarjeta" y "Lista"), se movió el selector de versión bíblica al extremo derecho, se integró el botón de copiar dentro del panel de texto bíblico con tooltip "Copiar texto" y se aplicó un borde fuerte con sombreado al panel para enfatizar su jerarquía visual.
+- 2026-08-12 17:12: En Paso 5 se sustituyó el sombreado externo del panel de texto bíblico por sombreado interno para mantener énfasis de contenedor sin proyectar halo externo, mejorando la limpieza visual del bloque en layouts compactos.
 
