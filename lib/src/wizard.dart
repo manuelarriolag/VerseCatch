@@ -1688,6 +1688,7 @@ class _WizardHomePageState extends State<WizardHomePage> {
             duration: _motionDuration(const Duration(milliseconds: 110)),
             opacity: _showStepSkeleton ? 1 : 0,
             child: _StepTransitionSkeleton(
+              active: _showStepSkeleton,
               reduceMotionEnabled: _reduceMotionEnabled,
             ),
           ),
@@ -1788,9 +1789,13 @@ class _WizardHomePageState extends State<WizardHomePage> {
 }
 
 class _StepTransitionSkeleton extends StatefulWidget {
-  const _StepTransitionSkeleton({required this.reduceMotionEnabled});
+  const _StepTransitionSkeleton({
+    required this.reduceMotionEnabled,
+    required this.active,
+  });
 
   final bool reduceMotionEnabled;
+  final bool active;
 
   @override
   State<_StepTransitionSkeleton> createState() =>
@@ -1808,7 +1813,7 @@ class _StepTransitionSkeletonState extends State<_StepTransitionSkeleton>
       vsync: this,
       duration: const Duration(milliseconds: 900),
     );
-    if (!widget.reduceMotionEnabled) {
+    if (widget.active && !widget.reduceMotionEnabled) {
       _controller.repeat();
     }
   }
@@ -1816,10 +1821,13 @@ class _StepTransitionSkeletonState extends State<_StepTransitionSkeleton>
   @override
   void didUpdateWidget(covariant _StepTransitionSkeleton oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.reduceMotionEnabled == widget.reduceMotionEnabled) return;
-    if (widget.reduceMotionEnabled) {
+    if (!widget.active || widget.reduceMotionEnabled) {
       _controller.stop();
-    } else {
+      return;
+    }
+
+    if (oldWidget.active != widget.active ||
+        oldWidget.reduceMotionEnabled != widget.reduceMotionEnabled) {
       _controller.repeat();
     }
   }
