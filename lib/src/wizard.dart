@@ -62,6 +62,7 @@ class _WizardHomePageState extends State<WizardHomePage> {
   static const _scanCompletionHoldDuration = Duration(milliseconds: 400);
   static const _minimumDetectionVisualDuration = Duration(milliseconds: 2200);
   static const _detectionCompletionHoldDuration = Duration(milliseconds: 350);
+  static const _stepSkeletonDuration = Duration(milliseconds: 180);
 
   _WizardStep _step = _WizardStep.chooseSource;
   final Set<_WizardStep> _completedSteps = <_WizardStep>{};
@@ -100,6 +101,8 @@ class _WizardHomePageState extends State<WizardHomePage> {
   Duration? _detectionDuration;
   bool _isDetectingReferences = false;
   _OcrVisualState _reviewDetectionVisualState = _OcrVisualState.idle;
+  bool _showStepSkeleton = false;
+  Timer? _stepSkeletonTimer;
 
   bool get _supportsCameraCapture =>
       !kIsWeb && (Platform.isAndroid || Platform.isIOS);
@@ -115,6 +118,7 @@ class _WizardHomePageState extends State<WizardHomePage> {
   @override
   void dispose() {
     _copyFeedbackTimer?.cancel();
+    _stepSkeletonTimer?.cancel();
     _textController.dispose();
     super.dispose();
   }
@@ -161,6 +165,7 @@ class _WizardHomePageState extends State<WizardHomePage> {
 
   void _resetWizard() {
     _textController.clear();
+    _stepSkeletonTimer?.cancel();
     setState(() {
       _step = _WizardStep.chooseSource;
       _completedSteps.clear();
@@ -184,6 +189,7 @@ class _WizardHomePageState extends State<WizardHomePage> {
       _detectionDuration = null;
       _isDetectingReferences = false;
       _reviewDetectionVisualState = _OcrVisualState.idle;
+      _showStepSkeleton = false;
       _imageQuarterTurns = 0;
       _imageCropRect = const Rect.fromLTWH(0, 0, 1, 1);
       _showCompactRefsView = true;
@@ -191,27 +197,50 @@ class _WizardHomePageState extends State<WizardHomePage> {
     _loadHistory();
   }
 
-  void _selectSource(_WizardSource source) {
+  void _goToStep(
+    _WizardStep next, {
+    Set<_WizardStep> complete = const <_WizardStep>{},
+    VoidCallback? mutate,
+  }) {
+    if (next == _step && complete.isEmpty && mutate == null) return;
+
+    _stepSkeletonTimer?.cancel();
+
     setState(() {
-      _completedSteps.add(_WizardStep.chooseSource);
-      _source = source;
-      _step = _WizardStep.acquireContent;
+      mutate?.call();
+      _completedSteps.addAll(complete);
+      _step = next;
+      _showStepSkeleton = !_reduceMotionEnabled;
     });
+
+    if (!_showStepSkeleton) return;
+    _stepSkeletonTimer = Timer(_stepSkeletonDuration, () {
+      if (!mounted) return;
+      setState(() => _showStepSkeleton = false);
+    });
+  }
+
+  void _selectSource(_WizardSource source) {
+    _goToStep(
+      _WizardStep.acquireContent,
+      complete: const <_WizardStep>{_WizardStep.chooseSource},
+      mutate: () => _source = source,
+    );
     if (source == _WizardSource.camera) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _openCamera());
     }
   }
 
   void _advanceToReview() {
-    setState(() {
-      _completedSteps.add(_WizardStep.acquireContent);
-      _step = _WizardStep.reviewText;
-    });
+    _goToStep(
+      _WizardStep.reviewText,
+      complete: const <_WizardStep>{_WizardStep.acquireContent},
+    );
   }
 
   void _navigateToStep(_WizardStep step) {
     if (step == _step || !_completedSteps.contains(step)) return;
-    setState(() => _step = step);
+    _goToStep(step);
     if (step == _WizardStep.exploreRefs && _activeReference != null) {
       _loadBibleText();
     }
@@ -285,15 +314,15 @@ class _WizardHomePageState extends State<WizardHomePage> {
     setState(() {
       _isDetectingReferences = false;
       _reviewDetectionVisualState = _OcrVisualState.idle;
-      _step = _WizardStep.detectRefs;
     });
+    _goToStep(_WizardStep.detectRefs);
   }
 
   void _goToExplore() {
-    setState(() {
-      _completedSteps.add(_WizardStep.detectRefs);
-      _step = _WizardStep.exploreRefs;
-    });
+    _goToStep(
+      _WizardStep.exploreRefs,
+      complete: const <_WizardStep>{_WizardStep.detectRefs},
+    );
     _loadBibleText();
   }
 
@@ -1419,7 +1448,7 @@ class _WizardHomePageState extends State<WizardHomePage> {
           ),
         );
       }
-      setState(() => _step = _WizardStep.chooseSource);
+      _goToStep(_WizardStep.chooseSource);
       return;
     }
     final imagePath = await Navigator.push<String>(
@@ -1430,7 +1459,7 @@ class _WizardHomePageState extends State<WizardHomePage> {
       ),
     );
     if (imagePath == null || !mounted) {
-      setState(() => _step = _WizardStep.chooseSource);
+      _goToStep(_WizardStep.chooseSource);
       return;
     }
     setState(() => _imagePath = imagePath);
@@ -1477,7 +1506,7 @@ class _WizardHomePageState extends State<WizardHomePage> {
         context,
       ).showSnackBar(SnackBar(content: Text('OCR falló: $failure')));
       if (backToSourceOnFailure) {
-        setState(() => _step = _WizardStep.chooseSource);
+        _goToStep(_WizardStep.chooseSource);
       }
       return;
     }
@@ -1614,7 +1643,7 @@ class _WizardHomePageState extends State<WizardHomePage> {
           onReset: _resetWizard,
         ),
         const Divider(height: 1),
-        Expanded(child: _buildStepContent(context, isDesktop: false)),
+        Expanded(child: _buildAnimatedStepContent(context, isDesktop: false)),
       ],
     );
   }
@@ -1629,7 +1658,40 @@ class _WizardHomePageState extends State<WizardHomePage> {
           onReset: _resetWizard,
         ),
         const VerticalDivider(width: 1),
-        Expanded(child: _buildStepContent(context, isDesktop: true)),
+        Expanded(child: _buildAnimatedStepContent(context, isDesktop: true)),
+      ],
+    );
+  }
+
+  Widget _buildAnimatedStepContent(
+    BuildContext context, {
+    required bool isDesktop,
+  }) {
+    final duration = _motionDuration(const Duration(milliseconds: 170));
+    final content = KeyedSubtree(
+      key: ValueKey<String>('step-${_step.name}'),
+      child: _buildStepContent(context, isDesktop: isDesktop),
+    );
+
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        AnimatedSwitcher(
+          duration: duration,
+          switchInCurve: Curves.easeOutCubic,
+          switchOutCurve: Curves.easeInCubic,
+          child: content,
+        ),
+        IgnorePointer(
+          ignoring: !_showStepSkeleton,
+          child: AnimatedOpacity(
+            duration: _motionDuration(const Duration(milliseconds: 110)),
+            opacity: _showStepSkeleton ? 1 : 0,
+            child: _StepTransitionSkeleton(
+              reduceMotionEnabled: _reduceMotionEnabled,
+            ),
+          ),
+        ),
       ],
     );
   }
@@ -1669,14 +1731,14 @@ class _WizardHomePageState extends State<WizardHomePage> {
         detectingReferences: _isDetectingReferences,
         detectionVisualState: _reviewDetectionVisualState,
         reduceMotionEnabled: _reduceMotionEnabled,
-        onBack: () => setState(() => _step = _WizardStep.acquireContent),
+        onBack: () => _goToStep(_WizardStep.acquireContent),
         onContinue: _runDetection,
       ),
       _WizardStep.detectRefs => _DetectRefsStep(
         charCount: _textController.text.length,
         groupedRefs: _groupedRefs,
         detectionDuration: _detectionDuration,
-        onBack: () => setState(() => _step = _WizardStep.reviewText),
+        onBack: () => _goToStep(_WizardStep.reviewText),
         onContinue: _groupedRefs.isNotEmpty ? _goToExplore : null,
       ),
       _WizardStep.exploreRefs => _ExploreRefsStep(
@@ -1696,11 +1758,11 @@ class _WizardHomePageState extends State<WizardHomePage> {
         onToggleCompactView: _toggleExploreViewMode,
         onBibleVersionChanged: _onBibleVersionChanged,
         onCopyBibleText: _copyBibleText,
-        onBack: () => setState(() => _step = _WizardStep.detectRefs),
-        onContinue: () => setState(() {
-          _completedSteps.add(_WizardStep.exploreRefs);
-          _step = _WizardStep.finish;
-        }),
+        onBack: () => _goToStep(_WizardStep.detectRefs),
+        onContinue: () => _goToStep(
+          _WizardStep.finish,
+          complete: const <_WizardStep>{_WizardStep.exploreRefs},
+        ),
       ),
       _WizardStep.finish => _FinishStep(
         refCount: _groupedRefs.length,
@@ -1722,6 +1784,183 @@ class _WizardHomePageState extends State<WizardHomePage> {
         onNewScan: _resetWizard,
       ),
     };
+  }
+}
+
+class _StepTransitionSkeleton extends StatefulWidget {
+  const _StepTransitionSkeleton({required this.reduceMotionEnabled});
+
+  final bool reduceMotionEnabled;
+
+  @override
+  State<_StepTransitionSkeleton> createState() =>
+      _StepTransitionSkeletonState();
+}
+
+class _StepTransitionSkeletonState extends State<_StepTransitionSkeleton>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    );
+    if (!widget.reduceMotionEnabled) {
+      _controller.repeat();
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant _StepTransitionSkeleton oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.reduceMotionEnabled == widget.reduceMotionEnabled) return;
+    if (widget.reduceMotionEnabled) {
+      _controller.stop();
+    } else {
+      _controller.repeat();
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final base = theme.colorScheme.surfaceContainerHighest.withValues(
+      alpha: 0.85,
+    );
+
+    return ColoredBox(
+      color: theme.colorScheme.surface.withValues(alpha: 0.92),
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _SkeletonBar(
+              widthFactor: 0.44,
+              height: 18,
+              baseColor: base,
+              controller: _controller,
+            ),
+            const SizedBox(height: 10),
+            _SkeletonBar(
+              widthFactor: 0.72,
+              height: 12,
+              baseColor: base,
+              controller: _controller,
+            ),
+            const SizedBox(height: 18),
+            Expanded(
+              child: _SkeletonBar(
+                widthFactor: 1,
+                height: double.infinity,
+                radius: 14,
+                baseColor: base,
+                controller: _controller,
+              ),
+            ),
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                Expanded(
+                  child: _SkeletonBar(
+                    widthFactor: 1,
+                    height: 42,
+                    radius: 24,
+                    baseColor: base,
+                    controller: _controller,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _SkeletonBar(
+                    widthFactor: 1,
+                    height: 42,
+                    radius: 24,
+                    baseColor: base,
+                    controller: _controller,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SkeletonBar extends StatelessWidget {
+  const _SkeletonBar({
+    required this.widthFactor,
+    required this.height,
+    required this.baseColor,
+    required this.controller,
+    this.radius = 10,
+  });
+
+  final double widthFactor;
+  final double height;
+  final double radius;
+  final Color baseColor;
+  final AnimationController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    return FractionallySizedBox(
+      widthFactor: widthFactor,
+      alignment: Alignment.centerLeft,
+      child: SizedBox(
+        height: height,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(radius),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final width = constraints.maxWidth;
+              final shimmerWidth = width * 0.36;
+              return AnimatedBuilder(
+                animation: controller,
+                builder: (context, _) {
+                  final shift = (width + shimmerWidth) * controller.value;
+                  return Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      ColoredBox(color: baseColor),
+                      Transform.translate(
+                        offset: Offset(shift - shimmerWidth, 0),
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: Container(
+                            width: shimmerWidth,
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [
+                                  Colors.white.withValues(alpha: 0),
+                                  Colors.white.withValues(alpha: 0.32),
+                                  Colors.white.withValues(alpha: 0),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              );
+            },
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -4083,39 +4322,90 @@ class _ExploreRefsStep extends StatelessWidget {
                   ),
           ),
           const SizedBox(height: 10),
-          // Navigation + action row
-          Row(
-            children: [
-              OutlinedButton(onPressed: onBack, child: const Text('Atrás')),
-              const SizedBox(width: 8),
-              IconButton(
-                icon: const Icon(Icons.chevron_left),
-                onPressed: currentRefIndex > 0 ? () => onNavigate(-1) : null,
-              ),
-              SizedBox(
-                width: 96,
-                child: Text(
-                  '${currentRefIndex + 1} de ${groupedRefs.length}',
-                  textAlign: TextAlign.center,
-                  style: theme.textTheme.bodySmall,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+          if (isDesktop)
+            Row(
+              children: [
+                OutlinedButton(onPressed: onBack, child: const Text('Atrás')),
+                const SizedBox(width: 8),
+                IconButton(
+                  icon: const Icon(Icons.chevron_left),
+                  onPressed: currentRefIndex > 0 ? () => onNavigate(-1) : null,
                 ),
-              ),
-              IconButton(
-                icon: const Icon(Icons.chevron_right),
-                onPressed: currentRefIndex < groupedRefs.length - 1
-                    ? () => onNavigate(1)
-                    : null,
-              ),
-              const SizedBox(width: 8),
-              FilledButton.icon(
-                onPressed: onContinue,
-                icon: const Icon(Icons.check, size: 18),
-                label: const Text('Finalizar'),
-              ),
-            ],
-          ),
+                SizedBox(
+                  width: 96,
+                  child: Text(
+                    '${currentRefIndex + 1} de ${groupedRefs.length}',
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.bodySmall,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.chevron_right),
+                  onPressed: currentRefIndex < groupedRefs.length - 1
+                      ? () => onNavigate(1)
+                      : null,
+                ),
+                const SizedBox(width: 8),
+                FilledButton.icon(
+                  onPressed: onContinue,
+                  icon: const Icon(Icons.check, size: 18),
+                  label: const Text('Finalizar'),
+                ),
+              ],
+            )
+          else
+            Column(
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.chevron_left),
+                      onPressed: currentRefIndex > 0
+                          ? () => onNavigate(-1)
+                          : null,
+                    ),
+                    SizedBox(
+                      width: 112,
+                      child: Text(
+                        '${currentRefIndex + 1} de ${groupedRefs.length}',
+                        textAlign: TextAlign.center,
+                        style: theme.textTheme.bodySmall,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.chevron_right),
+                      onPressed: currentRefIndex < groupedRefs.length - 1
+                          ? () => onNavigate(1)
+                          : null,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: onBack,
+                        child: const Text('Atrás'),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: FilledButton.icon(
+                        onPressed: onContinue,
+                        icon: const Icon(Icons.check, size: 18),
+                        label: const Text('Finalizar'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
         ],
       ),
     );
